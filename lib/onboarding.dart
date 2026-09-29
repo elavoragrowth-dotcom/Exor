@@ -19,9 +19,6 @@ class _OnboardingState extends State<Onboarding> {
   final _name = TextEditingController();
   final _picker = FixedExtentScrollController(initialItem: 6);
 
-  static const _accents = [C.lime, C.violet, C.teal, C.coral];
-  static const _accentNames = ['Lime', 'Violet', 'Teal', 'Coral'];
-
   bool get _hasName => _name.text.trim().isNotEmpty;
 
   @override
@@ -146,30 +143,33 @@ class _OnboardingState extends State<Onboarding> {
           const SizedBox(height: 24),
           const Reveal(
             delayMs: 460,
-            child: Text('This colours your focus rings and fresh habits. Lime stays in charge everywhere else.', style: subStyle),
+            child: Text('This colours your buttons and highlights everywhere. Change it anytime in Settings.', style: subStyle),
           ),
           const SizedBox(height: 20),
           Reveal(
             delayMs: 560,
             child: Row(
-              children: List.generate(_accents.length, (i) {
+              children: List.generate(Accent.presets.length, (i) {
                 final on = i == _accentIndex;
                 return Padding(
                   padding: const EdgeInsets.only(right: 12),
                   child: GestureDetector(
                     onTap: () {
                       HapticFeedback.selectionClick();
-                      setState(() => _accentIndex = i);
+                      setState(() {
+                        _accentIndex = i;
+                        Accent.color = Accent.presets[i];
+                      });
                     },
                     child: AnimatedContainer(
                       duration: const Duration(milliseconds: 250),
-                      width: 52,
-                      height: 52,
+                      width: 48,
+                      height: 48,
                       decoration: BoxDecoration(
-                        color: _accents[i],
+                        color: Accent.presets[i],
                         shape: BoxShape.circle,
                         border: Border.all(color: on ? Colors.white : Colors.transparent, width: 3),
-                        boxShadow: on ? [BoxShadow(color: _accents[i].withValues(alpha: 0.5), blurRadius: 18)] : [],
+                        boxShadow: on ? [BoxShadow(color: Accent.presets[i].withValues(alpha: 0.5), blurRadius: 18)] : [],
                       ),
                       child: on ? const Icon(Icons.check_rounded, color: C.base) : null,
                     ),
@@ -179,7 +179,7 @@ class _OnboardingState extends State<Onboarding> {
             ),
           ),
           const SizedBox(height: 8),
-          Reveal(delayMs: 620, child: Text(_accentNames[_accentIndex], style: const TextStyle(color: C.mute, fontSize: 13))),
+          Reveal(delayMs: 620, child: Text(Accent.names[_accentIndex], style: const TextStyle(color: C.mute, fontSize: 13))),
           const SizedBox(height: 28),
           Reveal(
             delayMs: 700,
@@ -201,7 +201,7 @@ class _OnboardingState extends State<Onboarding> {
             child: PillButton(
               label: 'Start my day',
               onTap: () {
-                widget.store.completeOnboarding(_name.text.trim(), _hour, _accents[_accentIndex], _notifications);
+                widget.store.completeOnboarding(_name.text.trim(), _hour, Accent.presets[_accentIndex], _notifications);
               },
             ),
           ),
