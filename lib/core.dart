@@ -4,14 +4,23 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 class C {
-  static const base = Color(0xFF0B0B10);
+  static const base = Color(0xFF000000);
   static const lime = Color(0xFFD4F25C);
   static const violet = Color(0xFF7B5CFF);
   static const teal = Color(0xFF00D9C0);
   static const orange = Color(0xFFF59E4B);
   static const coral = Color(0xFFFF6B6B);
+  static const red = Color(0xFFFF4757);
+  static const yellow = Color(0xFFFFD166);
+  static const blue = Color(0xFF4C8DF6);
   static const text = Color(0xFFF2F2F0);
   static const mute = Color(0xFF9A9AA2);
+}
+
+class Accent {
+  static Color color = C.lime;
+  static const List<Color> presets = [C.lime, C.violet, C.teal, C.orange, C.coral, C.blue];
+  static const List<String> names = ['Lime', 'Violet', 'Teal', 'Orange', 'Coral', 'Blue'];
 }
 
 class GlassConfig {
@@ -46,6 +55,28 @@ Color categoryColor(String category) {
       return C.orange;
     default:
       return C.lime;
+  }
+}
+
+Color priorityColor(String priority) {
+  switch (priority) {
+    case 'high':
+      return C.red;
+    case 'low':
+      return C.blue;
+    default:
+      return C.yellow;
+  }
+}
+
+String priorityLabel(String priority) {
+  switch (priority) {
+    case 'high':
+      return 'High';
+    case 'low':
+      return 'Low';
+    default:
+      return 'Medium';
   }
 }
 
@@ -94,6 +125,33 @@ String dayKey(DateTime d) {
 
 DateTime dateOnly(DateTime d) => DateTime(d.year, d.month, d.day);
 
+class Quote {
+  const Quote(this.text, this.author);
+  final String text, author;
+}
+
+const List<Quote> quotes = [
+  Quote('You have power over your mind, not outside events.', 'Marcus Aurelius'),
+  Quote('Waste no more time arguing about a good man; be one.', 'Marcus Aurelius'),
+  Quote('The impediment to action advances action.', 'Marcus Aurelius'),
+  Quote('Price is what you pay, value is what you get.', 'Warren Buffett'),
+  Quote('Risk comes from not knowing what you are doing.', 'Warren Buffett'),
+  Quote('It takes 20 years to build a reputation, 5 minutes to ruin it.', 'Warren Buffett'),
+  Quote('We suffer more in imagination than in reality.', 'Seneca'),
+  Quote('Luck is what happens when preparation meets opportunity.', 'Seneca'),
+  Quote('No man is free who is not master of himself.', 'Epictetus'),
+  Quote('First say to yourself what you would be, then do what you must.', 'Epictetus'),
+  Quote('We waste a lot of the little time we have.', 'Seneca'),
+  Quote('The best time to plant a tree was years ago. The next best time is now.', 'Proverb'),
+  Quote('Simplicity is the ultimate sophistication.', 'Leonardo da Vinci'),
+  Quote('An investment in knowledge pays the best interest.', 'Benjamin Franklin'),
+  Quote('Discipline is choosing what you want most over what you want now.', 'Abraham Lincoln'),
+];
+
+int _dayOfYear(DateTime d) => d.difference(DateTime(d.year, 1, 1)).inDays;
+
+Quote quoteForToday() => quotes[_dayOfYear(DateTime.now()) % quotes.length];
+
 class _Blob {
   const _Blob(this.color, this.alpha, this.cx, this.cy, this.r, this.sx, this.sy, this.phase);
   final Color color;
@@ -101,30 +159,14 @@ class _Blob {
   final int sx, sy;
 }
 
-class _Star {
-  const _Star(this.x, this.y, this.r, this.phase, this.k);
-  final double x, y, r, phase;
-  final int k;
-}
-
 class AuroraPainter extends CustomPainter {
   AuroraPainter(this.t);
   final double t;
 
   static const _blobs = [
-    _Blob(C.violet, .55, .25, .20, .85, 1, 2, 0.0),
-    _Blob(C.teal, .36, .85, .45, .75, 2, 1, 2.1),
-    _Blob(C.lime, .15, .15, .80, .70, 1, 1, 4.0),
-    _Blob(C.orange, .20, .90, .95, .70, 2, 3, 5.2),
+    _Blob(C.violet, .55, .28, .22, .95, 1, 2, 0.0),
+    _Blob(C.teal, .45, .78, .72, .95, 2, 1, 3.0),
   ];
-
-  static final List<_Star> _stars = () {
-    final r = math.Random(11);
-    return List.generate(
-      40,
-      (i) => _Star(r.nextDouble(), r.nextDouble(), .5 + r.nextDouble() * 1.1, r.nextDouble() * 6.28, 3 + r.nextInt(6)),
-    );
-  }();
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -133,23 +175,15 @@ class AuroraPainter extends CustomPainter {
     final k = GlassConfig.auroraIntensity;
     for (final b in _blobs) {
       final c = Offset(
-        size.width * (b.cx + 0.20 * math.sin(tau * t * b.sx + b.phase)),
-        size.height * (b.cy + 0.12 * math.cos(tau * t * b.sy + b.phase)),
+        size.width * (b.cx + 0.22 * math.sin(tau * t * b.sx + b.phase)),
+        size.height * (b.cy + 0.14 * math.cos(tau * t * b.sy + b.phase)),
       );
-      final radius = size.longestSide * b.r * 0.55 * (1 + 0.08 * math.sin(tau * t * 2 + b.phase));
+      final radius = size.longestSide * b.r * 0.6 * (1 + 0.08 * math.sin(tau * t * 2 + b.phase));
       final paint = Paint()
         ..shader = RadialGradient(
           colors: [b.color.withValues(alpha: (b.alpha * k).clamp(0, 1).toDouble()), b.color.withValues(alpha: 0)],
         ).createShader(Rect.fromCircle(center: c, radius: radius));
       canvas.drawCircle(c, radius, paint);
-    }
-    for (final s in _stars) {
-      final a = (0.10 + 0.40 * (0.5 + 0.5 * math.sin(tau * t * s.k + s.phase))) * k;
-      canvas.drawCircle(
-        Offset(s.x * size.width, s.y * size.height),
-        s.r,
-        Paint()..color = Colors.white.withValues(alpha: a.clamp(0, 1).toDouble()),
-      );
     }
   }
 
@@ -195,35 +229,78 @@ class Kicker extends StatelessWidget {
 }
 
 class Glass extends StatelessWidget {
-  const Glass({super.key, required this.child, this.padding = const EdgeInsets.all(20), this.radius = 28, this.tint = 0.08});
+  const Glass({super.key, required this.child, this.padding = const EdgeInsets.all(20), this.radius = 28, this.tint = 0.08, this.glow = true});
   final Widget child;
   final EdgeInsets padding;
   final double radius, tint;
+  final bool glow;
 
   @override
   Widget build(BuildContext context) {
     final br = BorderRadius.circular(radius);
-    return ClipRRect(
-      borderRadius: br,
-      child: BackdropFilter(
-        filter: ImageFilter.blur(sigmaX: GlassConfig.blur, sigmaY: GlassConfig.blur),
-        child: Container(
-          padding: padding,
-          decoration: BoxDecoration(
-            borderRadius: br,
-            gradient: LinearGradient(
-              begin: Alignment.topLeft,
-              end: Alignment.bottomRight,
-              colors: [Colors.white.withValues(alpha: tint + 0.05), Colors.white.withValues(alpha: tint * 0.5)],
+    final accent = Accent.color;
+    return RepaintBoundary(
+      child: ClipRRect(
+        borderRadius: br,
+        child: BackdropFilter(
+          filter: ImageFilter.blur(sigmaX: GlassConfig.blur, sigmaY: GlassConfig.blur),
+          child: Container(
+            padding: padding,
+            decoration: BoxDecoration(
+              borderRadius: br,
+              gradient: LinearGradient(
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+                colors: [Colors.white.withValues(alpha: tint + 0.06), Colors.white.withValues(alpha: tint * 0.45)],
+              ),
+              border: Border(
+                top: BorderSide(color: Colors.white.withValues(alpha: 0.34), width: 1),
+                left: BorderSide(color: Colors.white.withValues(alpha: 0.14), width: 1),
+                right: BorderSide(color: Colors.white.withValues(alpha: 0.14), width: 1),
+                bottom: BorderSide(color: Colors.white.withValues(alpha: 0.14), width: 1),
+              ),
+              boxShadow: [
+                BoxShadow(color: Colors.black.withValues(alpha: 0.35), blurRadius: 26, offset: const Offset(0, 12)),
+                if (glow) BoxShadow(color: accent.withValues(alpha: 0.10), blurRadius: 36),
+              ],
             ),
-            border: Border.all(color: Colors.white.withValues(alpha: 0.14)),
-            boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.18), blurRadius: 24, offset: const Offset(0, 10))],
+            child: child,
           ),
-          child: child,
         ),
       ),
     );
   }
+}
+
+class SolidCard extends StatelessWidget {
+  const SolidCard({super.key, required this.child, this.padding = const EdgeInsets.all(20), this.radius = 28, this.color});
+  final Widget child;
+  final EdgeInsets padding;
+  final double radius;
+  final Color? color;
+
+  @override
+  Widget build(BuildContext context) {
+    final base = color ?? Accent.color;
+    return Container(
+      padding: padding,
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(radius),
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [base, Color.lerp(base, Colors.black, 0.32) ?? base],
+        ),
+        boxShadow: [BoxShadow(color: base.withValues(alpha: 0.4), blurRadius: 30, offset: const Offset(0, 14))],
+      ),
+      child: child,
+    );
+  }
+}
+
+class NoGlowScrollBehavior extends MaterialScrollBehavior {
+  @override
+  Widget buildOverscrollIndicator(BuildContext context, Widget child, ScrollableDetails details) => child;
 }
 
 class Reveal extends StatefulWidget {
@@ -258,11 +335,11 @@ class _RevealState extends State<Reveal> with SingleTickerProviderStateMixin {
 }
 
 class PillButton extends StatefulWidget {
-  const PillButton({super.key, required this.label, required this.onTap, this.enabled = true, this.filled = true, this.color = C.lime});
+  const PillButton({super.key, required this.label, required this.onTap, this.enabled = true, this.filled = true, this.color});
   final String label;
   final VoidCallback onTap;
   final bool enabled, filled;
-  final Color color;
+  final Color? color;
   @override
   State<PillButton> createState() => _PillButtonState();
 }
@@ -273,6 +350,7 @@ class _PillButtonState extends State<PillButton> {
   @override
   Widget build(BuildContext context) {
     final on = widget.enabled;
+    final col = widget.color ?? Accent.color;
     return GestureDetector(
       onTapDown: on ? (_) => setState(() => _down = true) : null,
       onTapCancel: () => setState(() => _down = false),
@@ -293,20 +371,16 @@ class _PillButtonState extends State<PillButton> {
           alignment: Alignment.center,
           padding: const EdgeInsets.symmetric(horizontal: 30),
           decoration: BoxDecoration(
-            color: !on ? Colors.white.withValues(alpha: 0.10) : (widget.filled ? widget.color : Colors.transparent),
+            color: !on ? Colors.white.withValues(alpha: 0.10) : (widget.filled ? col : Colors.transparent),
             borderRadius: BorderRadius.circular(40),
-            border: (!widget.filled && on) ? Border.all(color: widget.color.withValues(alpha: 0.6)) : null,
+            border: (!widget.filled && on) ? Border.all(color: col.withValues(alpha: 0.6)) : null,
             boxShadow: (on && widget.filled)
-                ? [BoxShadow(color: widget.color.withValues(alpha: 0.35), blurRadius: 26, offset: const Offset(0, 8))]
+                ? [BoxShadow(color: col.withValues(alpha: 0.35), blurRadius: 26, offset: const Offset(0, 8))]
                 : [],
           ),
           child: Text(
             widget.label,
-            style: TextStyle(
-              fontWeight: FontWeight.w600,
-              fontSize: 15.5,
-              color: !on ? C.mute : (widget.filled ? C.base : widget.color),
-            ),
+            style: TextStyle(fontWeight: FontWeight.w600, fontSize: 15.5, color: !on ? C.mute : (widget.filled ? C.base : col)),
           ),
         ),
       ),
