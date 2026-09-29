@@ -73,9 +73,50 @@ class _SettingsPageState extends State<SettingsPage> {
           ),
         ),
         const SizedBox(height: 20),
+        const SectionLabel('ACCENT COLOUR'),
+        Reveal(
+          delayMs: 300,
+          child: Glass(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text('Colours your buttons, rings and highlights everywhere.', style: TextStyle(fontSize: 12.5, color: C.mute)),
+                const SizedBox(height: 14),
+                Row(
+                  children: List.generate(Accent.presets.length, (i) {
+                    final c = Accent.presets[i];
+                    final on = c.value == s.accentValue;
+                    return Padding(
+                      padding: const EdgeInsets.only(right: 12),
+                      child: GestureDetector(
+                        onTap: () {
+                          HapticFeedback.selectionClick();
+                          store.updateSettings((x) => x.accentValue = c.value);
+                        },
+                        child: AnimatedContainer(
+                          duration: const Duration(milliseconds: 220),
+                          width: 40,
+                          height: 40,
+                          decoration: BoxDecoration(
+                            color: c,
+                            shape: BoxShape.circle,
+                            border: Border.all(color: on ? Colors.white : Colors.transparent, width: 3),
+                            boxShadow: on ? [BoxShadow(color: c.withValues(alpha: 0.5), blurRadius: 14)] : [],
+                          ),
+                          child: on ? const Icon(Icons.check_rounded, color: C.base, size: 18) : null,
+                        ),
+                      ),
+                    );
+                  }),
+                ),
+              ],
+            ),
+          ),
+        ),
+        const SizedBox(height: 20),
         const SectionLabel('PLANNER'),
         Reveal(
-          delayMs: 320,
+          delayMs: 340,
           child: Glass(
             child: Column(
               children: [
@@ -126,28 +167,31 @@ class _SettingsPageState extends State<SettingsPage> {
         const SizedBox(height: 20),
         const SectionLabel('HABITS'),
         Reveal(
-          delayMs: 440,
+          delayMs: 420,
           child: Glass(child: _row('Haptics', Switch(value: s.hapticsEnabled, activeColor: C.lime, onChanged: (v) => store.updateSettings((x) => x.hapticsEnabled = v)))),
         ),
         const SizedBox(height: 20),
         const SectionLabel('APPEARANCE'),
         Reveal(
-          delayMs: 500,
+          delayMs: 460,
           child: Glass(
             child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                _row(
-                  'Aurora intensity',
-                  Row(
-                    children: ['Subtle', 'Normal', 'Vivid'].asMap().entries.map((e) {
-                      final on = s.auroraLevel == e.key;
-                      return Padding(padding: const EdgeInsets.only(left: 6), child: GestureDetector(onTap: () => store.updateSettings((x) => x.auroraLevel = e.key), child: Chip2(e.value, selected: on)));
-                    }).toList(),
-                  ),
+                const Text('Aurora intensity', style: TextStyle(fontSize: 14.5, color: C.text)),
+                const SizedBox(height: 10),
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: ['Subtle', 'Normal', 'Vivid'].asMap().entries.map((e) {
+                    final on = s.auroraLevel == e.key;
+                    return GestureDetector(onTap: () => store.updateSettings((x) => x.auroraLevel = e.key), child: Chip2(e.value, selected: on));
+                  }).toList(),
                 ),
+                const SizedBox(height: 16),
                 Container(height: 1, color: Colors.white.withValues(alpha: 0.08)),
-                const SizedBox(height: 6),
-                const Align(alignment: Alignment.centerLeft, child: Text('Glass blur strength', style: TextStyle(fontSize: 14.5, color: C.text))),
+                const SizedBox(height: 10),
+                const Text('Glass blur strength', style: TextStyle(fontSize: 14.5, color: C.text)),
                 Slider(
                   value: s.glassBlur,
                   min: 8,
@@ -163,7 +207,7 @@ class _SettingsPageState extends State<SettingsPage> {
         const SizedBox(height: 20),
         const SectionLabel('DATA'),
         Reveal(
-          delayMs: 560,
+          delayMs: 500,
           child: Glass(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -186,21 +230,21 @@ class _SettingsPageState extends State<SettingsPage> {
         const SizedBox(height: 20),
         const SectionLabel('ABOUT'),
         Reveal(
-          delayMs: 620,
+          delayMs: 540,
           child: Glass(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: const [
-                Text('Daybook · Phase 1', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600, color: C.text)),
+                Text('Daybook · v1.0.5 (Phase 1.5)', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600, color: C.text)),
                 SizedBox(height: 6),
-                Text('Glass everywhere, a real Planner, a live Home now-line, and a finished Habits tab.', style: TextStyle(fontSize: 12.5, color: C.mute, height: 1.4)),
+                Text('New black-glass theme, colour priorities on the Planner, and a global accent colour.', style: TextStyle(fontSize: 12.5, color: C.mute, height: 1.4)),
               ],
             ),
           ),
         ),
         const SizedBox(height: 20),
         Reveal(
-          delayMs: 680,
+          delayMs: 580,
           child: Glass(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
