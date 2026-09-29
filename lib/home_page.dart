@@ -1,4 +1,3 @@
-import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'core.dart';
@@ -14,19 +13,14 @@ class HomePage extends StatelessWidget {
     final h = now.hour;
     final part = (h >= 21 || h < 4) ? 3 : (h < 12 ? 0 : (h < 17 ? 1 : 2));
     const greet = ['Good morning,', 'Good afternoon,', 'Good evening,', 'Still up,'];
-    const lines = [
-      'A clean page. Fill it gently.',
-      'Halfway through. Keep the thread.',
-      'Softly now. Finish what matters.',
-      'The quiet hours. Rest is part of the plan.',
-    ];
+    final quote = quoteForToday();
+
     final nowMinutes = now.hour * 60 + now.minute;
     final blocksToday = store.blocksOn(now);
     final current = blocksToday.where((b) => nowMinutes >= b.startMinutes && nowMinutes < b.startMinutes + b.durationMinutes).toList();
     final upcoming = blocksToday.where((b) => b.startMinutes > nowMinutes).toList()
       ..sort((a, b) => a.startMinutes.compareTo(b.startMinutes));
     final justDone = blocksToday.where((b) => b.startMinutes + b.durationMinutes <= nowMinutes).toList();
-
     final dueHabits = store.habits.where((hb) => store.isDue(hb, now) && !store.isDoneOn(hb, now)).toList();
 
     return ListView(
@@ -36,38 +30,41 @@ class HomePage extends StatelessWidget {
         const SizedBox(height: 14),
         Reveal(delayMs: 120, child: Text(greet[part], style: h1Light)),
         Reveal(delayMs: 240, child: Text('${store.settings.name}.', maxLines: 2, overflow: TextOverflow.ellipsis, style: h1Bold)),
-        const SizedBox(height: 10),
-        Reveal(delayMs: 380, child: Text(lines[part], style: subStyle)),
-        const SizedBox(height: 28),
+        const SizedBox(height: 22),
+        Reveal(delayMs: 320, child: const HomeDayStrip()),
+        const SizedBox(height: 20),
         Reveal(
-          delayMs: 520,
-          child: Glass(
+          delayMs: 420,
+          child: SolidCard(
             child: Row(
               children: [
-                Ripple(color: store.settings.accent),
-                const SizedBox(width: 18),
+                Container(
+                  width: 52,
+                  height: 52,
+                  decoration: BoxDecoration(color: C.base.withValues(alpha: 0.18), shape: BoxShape.circle),
+                  child: Icon(current.isNotEmpty ? Icons.bolt_rounded : Icons.wb_sunny_rounded, color: C.base, size: 24),
+                ),
+                const SizedBox(width: 16),
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      const Kicker('RIGHT NOW'),
+                      Text('RIGHT NOW', style: TextStyle(fontSize: 11.5, letterSpacing: 2, fontWeight: FontWeight.w700, color: C.base.withValues(alpha: 0.6))),
                       const SizedBox(height: 6),
                       if (current.isNotEmpty) ...[
-                        Text(current.first.title, style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w600, color: C.text)),
-                        const SizedBox(height: 6),
+                        Text(current.first.title, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 19, fontWeight: FontWeight.w700, color: C.base)),
+                        const SizedBox(height: 4),
                         Text(
                           '${fmtMinutes(current.first.startMinutes)} – ${fmtMinutes(current.first.startMinutes + current.first.durationMinutes)}',
-                          style: const TextStyle(fontSize: 13, color: C.mute),
+                          style: TextStyle(fontSize: 12.5, color: C.base.withValues(alpha: 0.7)),
                         ),
                       ] else if (upcoming.isNotEmpty) ...[
-                        Text('Free until ${fmtMinutes(upcoming.first.startMinutes)}',
-                            style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w600, color: C.text)),
-                        const SizedBox(height: 6),
-                        Text('Next: ${upcoming.first.title}', style: const TextStyle(fontSize: 13, color: C.mute)),
+                        Text('Free until ${fmtMinutes(upcoming.first.startMinutes)}', style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w700, color: C.base)),
+                        const SizedBox(height: 4),
+                        Text('Next: ${upcoming.first.title}', maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 12.5, color: C.base.withValues(alpha: 0.7))),
                       ] else ...[
-                        const Text('Nothing planned yet', style: TextStyle(fontSize: 20, fontWeight: FontWeight.w600, color: C.text)),
-                        const SizedBox(height: 6),
-                        const Text('Open Planner to shape your day.', style: TextStyle(fontSize: 13, height: 1.45, color: C.mute)),
+                        const Text('Nothing planned yet', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700, color: C.base)),
+                        Text('Open Planner to shape your day.', style: TextStyle(fontSize: 12.5, color: C.base.withValues(alpha: 0.7))),
                       ],
                     ],
                   ),
@@ -79,12 +76,35 @@ class HomePage extends StatelessWidget {
                       store.toggleBlock(current.first);
                     },
                     child: Container(
-                      width: 44,
-                      height: 44,
-                      decoration: BoxDecoration(color: store.settings.accent, shape: BoxShape.circle),
-                      child: Icon(current.first.done ? Icons.check_rounded : Icons.play_arrow_rounded, color: C.base),
+                      width: 46,
+                      height: 46,
+                      decoration: const BoxDecoration(color: C.base, shape: BoxShape.circle),
+                      child: Icon(current.first.done ? Icons.check_rounded : Icons.play_arrow_rounded, color: store.settings.accent),
                     ),
                   ),
+              ],
+            ),
+          ),
+        ),
+        const SizedBox(height: 16),
+        Reveal(
+          delayMs: 500,
+          child: Glass(
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Icon(Icons.format_quote_rounded, color: store.settings.accent, size: 26),
+                const SizedBox(width: 14),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(quote.text, style: const TextStyle(fontSize: 14, height: 1.5, fontStyle: FontStyle.italic, color: C.text)),
+                      const SizedBox(height: 8),
+                      Text('— ${quote.author}', style: const TextStyle(fontSize: 12, color: C.mute)),
+                    ],
+                  ),
+                ),
               ],
             ),
           ),
@@ -92,7 +112,7 @@ class HomePage extends StatelessWidget {
         if (justDone.isNotEmpty) ...[
           const SizedBox(height: 14),
           Reveal(
-            delayMs: 600,
+            delayMs: 560,
             child: Row(
               children: [
                 const Icon(Icons.history_rounded, size: 16, color: C.mute),
@@ -104,9 +124,9 @@ class HomePage extends StatelessWidget {
         ],
         if (dueHabits.isNotEmpty) ...[
           const SizedBox(height: 22),
-          const Reveal(delayMs: 620, child: SectionLabel("TODAY'S HABITS")),
+          const Reveal(delayMs: 600, child: SectionLabel("TODAY'S HABITS")),
           Reveal(
-            delayMs: 680,
+            delayMs: 660,
             child: SizedBox(
               height: 92,
               child: ListView.separated(
@@ -143,7 +163,7 @@ class HomePage extends StatelessWidget {
         ],
         const SizedBox(height: 22),
         Reveal(
-          delayMs: 760,
+          delayMs: 720,
           child: Glass(
             child: Row(
               children: [
@@ -160,48 +180,44 @@ class HomePage extends StatelessWidget {
   }
 }
 
-class Ripple extends StatefulWidget {
-  const Ripple({super.key, this.color = C.lime});
-  final Color color;
-  @override
-  State<Ripple> createState() => _RippleState();
-}
-
-class _RippleState extends State<Ripple> with SingleTickerProviderStateMixin {
-  late final AnimationController _c = AnimationController(vsync: this, duration: const Duration(milliseconds: 3600))..repeat();
+class HomeDayStrip extends StatelessWidget {
+  const HomeDayStrip({super.key});
 
   @override
-  void dispose() {
-    _c.dispose();
-    super.dispose();
+  Widget build(BuildContext context) {
+    final now = DateTime.now();
+    final days = List.generate(7, (i) => now.subtract(const Duration(days: 3)).add(Duration(days: i)));
+    return SizedBox(
+      height: 70,
+      child: ListView.separated(
+        scrollDirection: Axis.horizontal,
+        itemCount: days.length,
+        separatorBuilder: (_, __) => const SizedBox(width: 10),
+        itemBuilder: (_, i) {
+          final d = days[i];
+          final today = dayKey(d) == dayKey(now);
+          return Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(weekdayShort(d.weekday).substring(0, 1), style: TextStyle(fontSize: 10.5, color: today ? Accent.color : C.mute, fontWeight: FontWeight.w600)),
+              const SizedBox(height: 8),
+              AnimatedContainer(
+                duration: const Duration(milliseconds: 300),
+                width: 42,
+                height: 42,
+                alignment: Alignment.center,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: today ? Accent.color : Colors.white.withValues(alpha: 0.06),
+                  border: today ? null : Border.all(color: Colors.white.withValues(alpha: 0.14)),
+                  boxShadow: today ? [BoxShadow(color: Accent.color.withValues(alpha: 0.4), blurRadius: 16, offset: const Offset(0, 6))] : [],
+                ),
+                child: Text('${d.day}', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700, color: today ? C.base : C.text)),
+              ),
+            ],
+          );
+        },
+      ),
+    );
   }
-
-  @override
-  Widget build(BuildContext context) => SizedBox(
-        width: 88,
-        height: 88,
-        child: AnimatedBuilder(animation: _c, builder: (_, __) => CustomPaint(painter: _RipplePainter(_c.value, widget.color))),
-      );
-}
-
-class _RipplePainter extends CustomPainter {
-  _RipplePainter(this.t, this.color);
-  final double t;
-  final Color color;
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    final c = size.center(Offset.zero);
-    final maxR = size.width / 2;
-    for (int i = 0; i < 3; i++) {
-      final p = (t + i / 3) % 1.0;
-      final r = 8 + (maxR - 8) * Curves.easeOut.transform(p);
-      canvas.drawCircle(c, r, Paint()..style = PaintingStyle.stroke..strokeWidth = 1.6..color = color.withValues(alpha: 0.55 * (1 - p)));
-    }
-    canvas.drawCircle(c, 14, Paint()..color = color.withValues(alpha: 0.18)..maskFilter = const MaskFilter.blur(BlurStyle.normal, 8));
-    canvas.drawCircle(c, 6, Paint()..color = color);
-  }
-
-  @override
-  bool shouldRepaint(_RipplePainter old) => old.t != t || old.color != color;
 }
