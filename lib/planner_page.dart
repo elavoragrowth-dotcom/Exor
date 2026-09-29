@@ -75,10 +75,23 @@ class _PlannerPageState extends State<PlannerPage> {
                           HapticFeedback.selectionClick();
                           setState(() => _selected = d);
                         },
-                        child: Container(
+                        child: AnimatedContainer(
+                          duration: const Duration(milliseconds: 220),
                           margin: const EdgeInsets.symmetric(horizontal: 3),
-                          padding: const EdgeInsets.symmetric(vertical: 10),
-                          decoration: BoxDecoration(color: on ? C.lime : Colors.white.withValues(alpha: 0.06), borderRadius: BorderRadius.circular(18)),
+                          padding: const EdgeInsets.symmetric(vertical: 11),
+                          decoration: BoxDecoration(
+                            gradient: on
+                                ? null
+                                : LinearGradient(
+                                    begin: Alignment.topLeft,
+                                    end: Alignment.bottomRight,
+                                    colors: [Colors.white.withValues(alpha: 0.07), Colors.white.withValues(alpha: 0.03)],
+                                  ),
+                            color: on ? Accent.color : null,
+                            borderRadius: BorderRadius.circular(20),
+                            border: on ? null : Border.all(color: Colors.white.withValues(alpha: 0.12)),
+                            boxShadow: on ? [BoxShadow(color: Accent.color.withValues(alpha: 0.35), blurRadius: 16, offset: const Offset(0, 6))] : [],
+                          ),
                           child: Column(
                             children: [
                               Text(weekdayShort(d.weekday).substring(0, 1), style: TextStyle(fontSize: 10, fontWeight: FontWeight.w600, color: on ? C.base : C.mute)),
@@ -137,8 +150,8 @@ class _PlannerPageState extends State<PlannerPage> {
                         right: 0,
                         child: Row(
                           children: [
-                            Container(width: 8, height: 8, decoration: const BoxDecoration(color: C.lime, shape: BoxShape.circle)),
-                            Expanded(child: Container(height: 1.4, color: C.lime.withValues(alpha: 0.7))),
+                            Container(width: 8, height: 8, decoration: BoxDecoration(color: Accent.color, shape: BoxShape.circle)),
+                            Expanded(child: Container(height: 1.4, color: Accent.color.withValues(alpha: 0.7))),
                           ],
                         ),
                       ),
@@ -172,7 +185,7 @@ class BlockCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final color = categoryColor(block.category);
+    final color = priorityColor(block.priority);
     return Glass(
       radius: 18,
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
@@ -197,7 +210,7 @@ class BlockCard extends StatelessWidget {
                     decoration: block.done ? TextDecoration.lineThrough : null,
                   ),
                 ),
-                Text('${fmtMinutes(block.startMinutes)} · ${fmtDurationShort(block.durationMinutes)}', style: const TextStyle(fontSize: 10.5, color: C.mute)),
+                Text('${fmtMinutes(block.startMinutes)} · ${fmtDurationShort(block.durationMinutes)} · ${block.category}', maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 10.5, color: C.mute)),
               ],
             ),
           ),
@@ -224,6 +237,7 @@ class BlockEditor extends StatefulWidget {
 class _BlockEditorState extends State<BlockEditor> {
   late final TextEditingController _title = TextEditingController(text: widget.existing?.title ?? '');
   String _category = 'Study';
+  String _priority = 'medium';
   late int _start = widget.existing?.startMinutes ?? widget.initialStart ?? 8 * 60;
   int _duration = 30;
   String? _linkedHabit;
@@ -232,6 +246,7 @@ class _BlockEditorState extends State<BlockEditor> {
   void initState() {
     super.initState();
     _category = widget.existing?.category ?? 'Study';
+    _priority = widget.existing?.priority ?? 'medium';
     _duration = widget.existing?.durationMinutes ?? 30;
     _linkedHabit = widget.existing?.linkedHabitId;
   }
@@ -248,6 +263,7 @@ class _BlockEditorState extends State<BlockEditor> {
       final b = widget.existing!;
       b.title = _title.text.trim();
       b.category = _category;
+      b.priority = _priority;
       b.startMinutes = _start;
       b.durationMinutes = _duration;
       b.linkedHabitId = _linkedHabit;
@@ -257,6 +273,7 @@ class _BlockEditorState extends State<BlockEditor> {
         id: newId(),
         title: _title.text.trim(),
         category: _category,
+        priority: _priority,
         date: dayKey(widget.date),
         startMinutes: _start,
         durationMinutes: _duration,
@@ -292,6 +309,16 @@ class _BlockEditorState extends State<BlockEditor> {
             fillColor: Colors.white.withValues(alpha: 0.06),
             border: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: BorderSide.none),
           ),
+        ),
+        const SizedBox(height: 16),
+        const SectionLabel('PRIORITY'),
+        Wrap(
+          spacing: 8,
+          children: [
+            GestureDetector(onTap: () => setState(() => _priority = 'high'), child: Chip2('High', selected: _priority == 'high', color: C.red)),
+            GestureDetector(onTap: () => setState(() => _priority = 'medium'), child: Chip2('Medium', selected: _priority == 'medium', color: C.yellow)),
+            GestureDetector(onTap: () => setState(() => _priority = 'low'), child: Chip2('Low', selected: _priority == 'low', color: C.blue)),
+          ],
         ),
         const SizedBox(height: 16),
         const SectionLabel('CATEGORY'),
