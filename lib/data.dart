@@ -92,6 +92,7 @@ class PlannerBlock {
     required this.durationMinutes,
     this.linkedHabitId,
     this.done = false,
+    this.priority = 'medium',
   });
   final String id;
   String title;
@@ -101,6 +102,7 @@ class PlannerBlock {
   int durationMinutes;
   String? linkedHabitId;
   bool done;
+  String priority;
 
   Map<String, dynamic> toJson() => {
         'id': id,
@@ -111,6 +113,7 @@ class PlannerBlock {
         'durationMinutes': durationMinutes,
         'linkedHabitId': linkedHabitId,
         'done': done,
+        'priority': priority,
       };
   factory PlannerBlock.fromJson(Map<String, dynamic> j) => PlannerBlock(
         id: j['id'],
@@ -121,6 +124,7 @@ class PlannerBlock {
         durationMinutes: j['durationMinutes'] ?? 30,
         linkedHabitId: j['linkedHabitId'],
         done: j['done'] ?? false,
+        priority: j['priority'] ?? 'medium',
       );
 }
 
@@ -212,6 +216,7 @@ class AppStore extends ChangeNotifier {
         .toList();
     GlassConfig.blur = settings.glassBlur;
     GlassConfig.auroraIntensity = [0.6, 1.0, 1.4][settings.auroraLevel.clamp(0, 2).toInt()];
+    Accent.color = settings.accent;
   }
 
   Future<void> _saveSettings() async => _prefs.setString(_kSettings, jsonEncode(settings.toJson()));
@@ -224,6 +229,7 @@ class AppStore extends ChangeNotifier {
     settings.dayStartHour = dayStart;
     settings.accentValue = accent.value;
     settings.notificationsEnabled = notifications;
+    Accent.color = accent;
     onboarded = true;
     await _prefs.setBool(_kOnboarded, true);
     await _prefs.setBool('onboarded', true);
@@ -244,6 +250,7 @@ class AppStore extends ChangeNotifier {
     fn(settings);
     GlassConfig.blur = settings.glassBlur;
     GlassConfig.auroraIntensity = [0.6, 1.0, 1.4][settings.auroraLevel.clamp(0, 2).toInt()];
+    Accent.color = settings.accent;
     await _saveSettings();
     notifyListeners();
   }
@@ -419,6 +426,7 @@ class AppStore extends ChangeNotifier {
       await _saveBlocks();
       GlassConfig.blur = settings.glassBlur;
       GlassConfig.auroraIntensity = [0.6, 1.0, 1.4][settings.auroraLevel.clamp(0, 2).toInt()];
+      Accent.color = settings.accent;
       notifyListeners();
       return true;
     } catch (_) {
