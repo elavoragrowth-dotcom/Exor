@@ -35,6 +35,7 @@ class DaybookApp extends StatelessWidget {
     return MaterialApp(
       debugShowCheckedModeBanner: false,
       title: 'Daybook',
+      scrollBehavior: NoGlowScrollBehavior(),
       theme: ThemeData(
         useMaterial3: true,
         brightness: Brightness.dark,
@@ -212,7 +213,7 @@ class GlassNav extends StatelessWidget {
                         curve: Curves.easeOutCubic,
                         width: i == index ? big : small,
                         height: 52,
-                        decoration: BoxDecoration(color: i == index ? C.lime : Colors.transparent, borderRadius: BorderRadius.circular(26)),
+                        decoration: BoxDecoration(color: i == index ? Accent.color : Colors.transparent, borderRadius: BorderRadius.circular(26)),
                         child: ClipRect(
                           child: Row(
                             mainAxisAlignment: MainAxisAlignment.center,
