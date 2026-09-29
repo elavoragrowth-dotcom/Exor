@@ -128,11 +128,12 @@ class _HabitsPageState extends State<HabitsPage> {
                   ),
                 );
               }),
+            const SizedBox(height: 90),
           ],
         ),
         Positioned(
           right: 4,
-          bottom: 4,
+          bottom: MediaQuery.of(context).padding.bottom + 96,
           child: GestureDetector(
             onTap: () async {
               await showGlassSheet(context, HabitEditor(store: store));
@@ -141,7 +142,7 @@ class _HabitsPageState extends State<HabitsPage> {
             child: Container(
               width: 58,
               height: 58,
-              decoration: BoxDecoration(color: C.lime, shape: BoxShape.circle, boxShadow: [BoxShadow(color: C.lime.withValues(alpha: 0.4), blurRadius: 20)]),
+              decoration: BoxDecoration(color: Accent.color, shape: BoxShape.circle, boxShadow: [BoxShadow(color: Accent.color.withValues(alpha: 0.4), blurRadius: 20)]),
               child: const Icon(Icons.add_rounded, color: C.base, size: 30),
             ),
           ),
@@ -151,13 +152,22 @@ class _HabitsPageState extends State<HabitsPage> {
   }
 
   Widget _statMini(String value, String label, IconData icon, Color color) => Expanded(
-        child: Column(
-          children: [
-            Icon(icon, color: color, size: 18),
-            const SizedBox(height: 6),
-            Text(value, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700, color: C.text)),
-            Text(label, style: const TextStyle(fontSize: 10.5, color: C.mute)),
-          ],
+        child: Container(
+          margin: const EdgeInsets.symmetric(horizontal: 4),
+          padding: const EdgeInsets.symmetric(vertical: 12),
+          decoration: BoxDecoration(
+            color: Colors.white.withValues(alpha: 0.04),
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(color: Colors.white.withValues(alpha: 0.09)),
+          ),
+          child: Column(
+            children: [
+              Icon(icon, color: color, size: 18),
+              const SizedBox(height: 6),
+              Text(value, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700, color: C.text)),
+              Text(label, style: const TextStyle(fontSize: 10.5, color: C.mute)),
+            ],
+          ),
         ),
       );
 }
@@ -556,6 +566,7 @@ class _HabitDetailPageState extends State<HabitDetailPage> {
           ),
         ),
       );
+
   Widget _activityView(AppStore store, Habit h, DateTime now) {
     if (_range == 'Week') {
       final start = now.subtract(Duration(days: now.weekday - 1));
@@ -823,4 +834,4 @@ class _HabitEditorState extends State<HabitEditor> {
     );
   }
 }
-  
+      
