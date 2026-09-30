@@ -14,9 +14,13 @@ class Habit {
     required this.repeatType,
     this.weekdays = const [],
     this.timesPerWeek = 3,
+    this.everyNDays = 2,
     this.plannedMinutes,
     this.focusTargetMinutes,
     this.category = 'Study',
+    this.type = 'normal',
+    this.amountUnit = '',
+    this.amountGoal = 1,
     required this.createdAt,
   });
 
@@ -27,9 +31,13 @@ class Habit {
   String repeatType;
   List<int> weekdays;
   int timesPerWeek;
+  int everyNDays;
   int? plannedMinutes;
   int? focusTargetMinutes;
   String category;
+  String type; // 'normal' | 'avoid' | 'amount'
+  String amountUnit;
+  double amountGoal;
   final DateTime createdAt;
 
   Color get color => Color(colorValue);
@@ -43,9 +51,13 @@ class Habit {
         'repeatType': repeatType,
         'weekdays': weekdays,
         'timesPerWeek': timesPerWeek,
+        'everyNDays': everyNDays,
         'plannedMinutes': plannedMinutes,
         'focusTargetMinutes': focusTargetMinutes,
         'category': category,
+        'type': type,
+        'amountUnit': amountUnit,
+        'amountGoal': amountGoal,
         'createdAt': createdAt.toIso8601String(),
       };
 
@@ -57,27 +69,33 @@ class Habit {
         repeatType: j['repeatType'] ?? 'daily',
         weekdays: (j['weekdays'] as List?)?.map((e) => e as int).toList() ?? const [],
         timesPerWeek: j['timesPerWeek'] ?? 3,
+        everyNDays: j['everyNDays'] ?? 2,
         plannedMinutes: j['plannedMinutes'],
         focusTargetMinutes: j['focusTargetMinutes'],
         category: j['category'] ?? 'Study',
+        type: j['type'] ?? 'normal',
+        amountUnit: j['amountUnit'] ?? '',
+        amountGoal: (j['amountGoal'] ?? 1).toDouble(),
         createdAt: DateTime.tryParse(j['createdAt'] ?? '') ?? DateTime.now(),
       );
 }
 
 class HabitLog {
-  HabitLog({required this.habitId, required this.date, this.done = false, this.focusSeconds = 0, this.note});
+  HabitLog({required this.habitId, required this.date, this.done = false, this.focusSeconds = 0, this.amount = 0, this.note});
   final String habitId;
   final String date;
   bool done;
   int focusSeconds;
+  double amount;
   String? note;
 
-  Map<String, dynamic> toJson() => {'habitId': habitId, 'date': date, 'done': done, 'focusSeconds': focusSeconds, 'note': note};
+  Map<String, dynamic> toJson() => {'habitId': habitId, 'date': date, 'done': done, 'focusSeconds': focusSeconds, 'amount': amount, 'note': note};
   factory HabitLog.fromJson(Map<String, dynamic> j) => HabitLog(
         habitId: j['habitId'],
         date: j['date'],
         done: j['done'] ?? false,
         focusSeconds: j['focusSeconds'] ?? 0,
+        amount: (j['amount'] ?? 0).toDouble(),
         note: j['note'],
       );
 }
@@ -141,12 +159,15 @@ class AppSettings {
     this.auroraLevel = 1,
     this.glassBlur = 24,
     this.accentValue = 0xFFD4F25C,
+    this.glassStyleIndex = 0,
+    this.profilePicturePath,
   });
   String name;
-  int dayStartHour, dayEndHour, slotMinutes, reminderLeadMinutes, auroraLevel;
+  int dayStartHour, dayEndHour, slotMinutes, reminderLeadMinutes, auroraLevel, glassStyleIndex;
   bool weekStartsMonday, notificationsEnabled, hapticsEnabled;
   double glassBlur;
   int accentValue;
+  String? profilePicturePath;
 
   Color get accent => Color(accentValue);
 
@@ -162,6 +183,8 @@ class AppSettings {
         'auroraLevel': auroraLevel,
         'glassBlur': glassBlur,
         'accentValue': accentValue,
+        'glassStyleIndex': glassStyleIndex,
+        'profilePicturePath': profilePicturePath,
       };
 
   factory AppSettings.fromJson(Map<String, dynamic> j) => AppSettings(
@@ -176,6 +199,8 @@ class AppSettings {
         auroraLevel: j['auroraLevel'] ?? 1,
         glassBlur: (j['glassBlur'] ?? 24).toDouble(),
         accentValue: j['accentValue'] ?? 0xFFD4F25C,
+        glassStyleIndex: j['glassStyleIndex'] ?? 0,
+        profilePicturePath: j['profilePicturePath'],
       );
 }
 
@@ -194,6 +219,13 @@ class AppStore extends ChangeNotifier {
   static const _kHabits = 'habits_v1';
   static const _kLogs = 'logs_v1';
   static const _kBlocks = 'blocks_v1';
+
+  void _syncStatics() {
+    GlassConfig.blur = settings.glassBlur;
+    GlassConfig.auroraIntensity = [0.6, 1.0, 1.4][settings.auroraLevel.clamp(0, 2).toInt()];
+    GlassConfig.style = settings.glassStyleIndex == 1 ? GlassStyle.clear : GlassStyle.frosted;
+    Accent.color = settings.accent;
+  }
 
   Future<void> load() async {
     onboarded = _prefs.getBool(_kOnboarded) ?? _prefs.getBool('onboarded') ?? false;
@@ -214,9 +246,7 @@ class AppStore extends ChangeNotifier {
     blocks = (jsonDecode(_prefs.getString(_kBlocks) ?? '[]') as List)
         .map((e) => PlannerBlock.fromJson(e as Map<String, dynamic>))
         .toList();
-    GlassConfig.blur = settings.glassBlur;
-    GlassConfig.auroraIntensity = [0.6, 1.0, 1.4][settings.auroraLevel.clamp(0, 2).toInt()];
-    Accent.color = settings.accent;
+    _syncStatics();
   }
 
   Future<void> _saveSettings() async => _prefs.setString(_kSettings, jsonEncode(settings.toJson()));
@@ -229,13 +259,13 @@ class AppStore extends ChangeNotifier {
     settings.dayStartHour = dayStart;
     settings.accentValue = accent.value;
     settings.notificationsEnabled = notifications;
-    Accent.color = accent;
     onboarded = true;
     await _prefs.setBool(_kOnboarded, true);
     await _prefs.setBool('onboarded', true);
     await _prefs.setString('name', name);
     await _prefs.setInt('dayStart', dayStart);
     await _saveSettings();
+    _syncStatics();
     notifyListeners();
   }
 
@@ -248,9 +278,7 @@ class AppStore extends ChangeNotifier {
 
   Future<void> updateSettings(void Function(AppSettings s) fn) async {
     fn(settings);
-    GlassConfig.blur = settings.glassBlur;
-    GlassConfig.auroraIntensity = [0.6, 1.0, 1.4][settings.auroraLevel.clamp(0, 2).toInt()];
-    Accent.color = settings.accent;
+    _syncStatics();
     await _saveSettings();
     notifyListeners();
   }
@@ -292,6 +320,25 @@ class AppStore extends ChangeNotifier {
     return l.isNotEmpty && l.first.done;
   }
 
+  double amountOn(Habit h, DateTime day) {
+    final l = logs.where((e) => e.habitId == h.id && e.date == dayKey(day)).toList();
+    return l.isEmpty ? 0 : l.first.amount;
+  }
+
+  /// The single source of truth for "did this habit succeed on this day",
+  /// aware of its type: normal = checked, avoid = did NOT log a slip,
+  /// amount = reached its daily goal.
+  bool successOn(Habit h, DateTime day) {
+    switch (h.type) {
+      case 'avoid':
+        return !isDoneOn(h, day);
+      case 'amount':
+        return amountOn(h, day) >= h.amountGoal;
+      default:
+        return isDoneOn(h, day);
+    }
+  }
+
   int focusSecondsOn(Habit h, DateTime day) {
     final l = logs.where((e) => e.habitId == h.id && e.date == dayKey(day)).toList();
     return l.isEmpty ? 0 : l.first.focusSeconds;
@@ -300,6 +347,14 @@ class AppStore extends ChangeNotifier {
   Future<void> toggleHabit(Habit h, DateTime day) async {
     final log = _logFor(h.id, dayKey(day));
     log.done = !log.done;
+    await _saveLogs();
+    notifyListeners();
+  }
+
+  Future<void> setAmount(Habit h, DateTime day, double value) async {
+    final log = _logFor(h.id, dayKey(day));
+    log.amount = value < 0 ? 0 : value;
+    log.done = log.amount >= h.amountGoal;
     await _saveLogs();
     notifyListeners();
   }
@@ -317,20 +372,31 @@ class AppStore extends ChangeNotifier {
         return h.weekdays.contains(day.weekday);
       case 'timesPerWeek':
         return true;
+      case 'everyNDays':
+        final n = h.everyNDays < 1 ? 1 : h.everyNDays;
+        final diff = dateOnly(day).difference(dateOnly(h.createdAt)).inDays;
+        return diff >= 0 && diff % n == 0;
       default:
         return true;
     }
   }
 
+  bool allDueDoneToday() {
+    final now = DateTime.now();
+    final due = habits.where((h) => isDue(h, now)).toList();
+    if (due.isEmpty) return false;
+    return due.every((h) => successOn(h, now));
+  }
+
   int currentStreak(Habit h) {
     int streak = 0;
     DateTime cursor = dateOnly(DateTime.now());
-    if (!isDoneOn(h, cursor)) cursor = cursor.subtract(const Duration(days: 1));
+    if (!successOn(h, cursor)) cursor = cursor.subtract(const Duration(days: 1));
     int guard = 0;
     while (guard < 1000) {
       guard++;
       if (isDue(h, cursor)) {
-        if (isDoneOn(h, cursor)) {
+        if (successOn(h, cursor)) {
           streak++;
         } else {
           break;
@@ -344,8 +410,6 @@ class AppStore extends ChangeNotifier {
   }
 
   int bestStreak(Habit h) {
-    final doneDates = logs.where((l) => l.habitId == h.id && l.done).map((l) => l.date).toSet();
-    if (doneDates.isEmpty) return 0;
     int best = 0, running = 0;
     DateTime cursor = dateOnly(h.createdAt);
     final end = dateOnly(DateTime.now());
@@ -353,7 +417,7 @@ class AppStore extends ChangeNotifier {
     while (!cursor.isAfter(end) && guard < 2000) {
       guard++;
       if (isDue(h, cursor)) {
-        if (doneDates.contains(dayKey(cursor))) {
+        if (successOn(h, cursor)) {
           running++;
           if (running > best) best = running;
         } else {
@@ -365,7 +429,16 @@ class AppStore extends ChangeNotifier {
     return best;
   }
 
-  int totalCompletions(Habit h) => logs.where((l) => l.habitId == h.id && l.done).length;
+  int totalCompletions(Habit h) {
+    final dates = logs.where((l) => l.habitId == h.id).map((l) => l.date).toSet();
+    int count = 0;
+    for (final d in dates) {
+      final parts = d.split('-');
+      final day = DateTime(int.parse(parts[0]), int.parse(parts[1]), int.parse(parts[2]));
+      if (successOn(h, day)) count++;
+    }
+    return count;
+  }
 
   Future<void> addBlock(PlannerBlock b) async {
     blocks.add(b);
@@ -424,9 +497,7 @@ class AppStore extends ChangeNotifier {
       await _saveHabits();
       await _saveLogs();
       await _saveBlocks();
-      GlassConfig.blur = settings.glassBlur;
-      GlassConfig.auroraIntensity = [0.6, 1.0, 1.4][settings.auroraLevel.clamp(0, 2).toInt()];
-      Accent.color = settings.accent;
+      _syncStatics();
       notifyListeners();
       return true;
     } catch (_) {
