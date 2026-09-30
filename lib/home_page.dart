@@ -1,14 +1,24 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:image_picker/image_picker.dart';
+import 'package:path_provider/path_provider.dart';
 import 'core.dart';
 import 'data.dart';
 
-class HomePage extends StatelessWidget {
+class HomePage extends StatefulWidget {
   const HomePage({super.key, required this.store});
   final AppStore store;
+  @override
+  State<HomePage> createState() => _HomePageState();
+}
+
+class _HomePageState extends State<HomePage> {
+  final GlobalKey _rightNowKey = GlobalKey();
 
   @override
   Widget build(BuildContext context) {
+    final store = widget.store;
     final now = DateTime.now();
     final h = now.hour;
     final part = (h >= 21 || h < 4) ? 3 : (h < 12 ? 0 : (h < 17 ? 1 : 2));
@@ -21,20 +31,39 @@ class HomePage extends StatelessWidget {
     final upcoming = blocksToday.where((b) => b.startMinutes > nowMinutes).toList()
       ..sort((a, b) => a.startMinutes.compareTo(b.startMinutes));
     final justDone = blocksToday.where((b) => b.startMinutes + b.durationMinutes <= nowMinutes).toList();
-    final dueHabits = store.habits.where((hb) => store.isDue(hb, now) && !store.isDoneOn(hb, now)).toList();
+    final dueHabits = store.habits.where((hb) => store.isDue(hb, now) && !store.successOn(hb, now)).toList();
+
+    final week = List.generate(7, (i) => now.subtract(Duration(days: now.weekday - 1 - i)));
+    final todayIndex = now.weekday - 1;
 
     return ListView(
       padding: pagePad,
       children: [
-        Reveal(child: Kicker(dateLabel(now))),
-        const SizedBox(height: 14),
-        Reveal(delayMs: 120, child: Text(greet[part], style: h1Light)),
-        Reveal(delayMs: 240, child: Text('${store.settings.name}.', maxLines: 2, overflow: TextOverflow.ellipsis, style: h1Bold)),
+        Reveal(
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Kicker(dateLabel(now)),
+                    const SizedBox(height: 14),
+                    Text(greet[part], style: h1Light),
+                    Text('${store.settings.name}.', maxLines: 2, overflow: TextOverflow.ellipsis, style: h1Bold),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 14),
+              ProfileAvatar(store: store),
+            ],
+          ),
+        ),
         const SizedBox(height: 22),
-        Reveal(delayMs: 320, child: const HomeDayStrip()),
+        Reveal(delayMs: 200, child: SlidingDayStrip(days: week, selectedIndex: todayIndex)),
         const SizedBox(height: 20),
         Reveal(
-          delayMs: 420,
+          delayMs: 320,
           child: SolidCard(
             child: Row(
               children: [
@@ -71,8 +100,11 @@ class HomePage extends StatelessWidget {
                 ),
                 if (current.isNotEmpty)
                   GestureDetector(
+                    key: _rightNowKey,
                     onTap: () {
+                      final wasDone = current.first.done;
                       HapticFeedback.mediumImpact();
+                      if (!wasDone) fireCompletionBurst(context, _rightNowKey, priorityColor(current.first.priority));
                       store.toggleBlock(current.first);
                     },
                     child: Container(
@@ -88,7 +120,7 @@ class HomePage extends StatelessWidget {
         ),
         const SizedBox(height: 16),
         Reveal(
-          delayMs: 500,
+          delayMs: 400,
           child: Glass(
             child: Row(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -112,7 +144,7 @@ class HomePage extends StatelessWidget {
         if (justDone.isNotEmpty) ...[
           const SizedBox(height: 14),
           Reveal(
-            delayMs: 560,
+            delayMs: 460,
             child: Row(
               children: [
                 const Icon(Icons.history_rounded, size: 16, color: C.mute),
@@ -124,9 +156,9 @@ class HomePage extends StatelessWidget {
         ],
         if (dueHabits.isNotEmpty) ...[
           const SizedBox(height: 22),
-          const Reveal(delayMs: 600, child: SectionLabel("TODAY'S HABITS")),
+          const Reveal(delayMs: 500, child: SectionLabel("TODAY'S HABITS")),
           Reveal(
-            delayMs: 660,
+            delayMs: 560,
             child: SizedBox(
               height: 92,
               child: ListView.separated(
@@ -137,8 +169,10 @@ class HomePage extends StatelessWidget {
                   final hb = dueHabits[i];
                   return GestureDetector(
                     onTap: () {
-                      HapticFeedback.mediumImpact();
-                      store.toggleHabit(hb, now);
+                      if (hb.type == 'normal') {
+                        HapticFeedback.mediumImpact();
+                        store.toggleHabit(hb, now);
+                      }
                     },
                     child: Glass(
                       radius: 22,
@@ -163,7 +197,7 @@ class HomePage extends StatelessWidget {
         ],
         const SizedBox(height: 22),
         Reveal(
-          delayMs: 720,
+          delayMs: 620,
           child: Glass(
             child: Row(
               children: [
@@ -180,43 +214,63 @@ class HomePage extends StatelessWidget {
   }
 }
 
-class HomeDayStrip extends StatelessWidget {
-  const HomeDayStrip({super.key});
+/// FIX 1: circular profile-picture slot, top-right of the greeting.
+/// Tap to pick from the gallery; the image is copied into the app's own
+/// storage so it survives cache clears. Falls back to initials, then a
+/// placeholder icon.
+class ProfileAvatar extends StatefulWidget {
+  const ProfileAvatar({super.key, required this.store});
+  final AppStore store;
+  @override
+  State<ProfileAvatar> createState() => _ProfileAvatarState();
+}
+
+class _ProfileAvatarState extends State<ProfileAvatar> {
+  bool _busy = false;
+
+  Future<void> _pick() async {
+    if (_busy) return;
+    setState(() => _busy = true);
+    try {
+      final picker = ImagePicker();
+      final img = await picker.pickImage(source: ImageSource.gallery, maxWidth: 640, imageQuality: 85);
+      if (img == null) return;
+      final dir = await getApplicationDocumentsDirectory();
+      final ext = img.path.contains('.') ? img.path.split('.').last : 'jpg';
+      final dest = '${dir.path}/profile_${DateTime.now().millisecondsSinceEpoch}.$ext';
+      await File(img.path).copy(dest);
+      await widget.store.updateSettings((s) => s.profilePicturePath = dest);
+    } catch (_) {
+      // Silently ignore — picker cancellation or platform quirk.
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
-    final now = DateTime.now();
-    final days = List.generate(7, (i) => now.subtract(const Duration(days: 3)).add(Duration(days: i)));
-    return SizedBox(
-      height: 70,
-      child: ListView.separated(
-        scrollDirection: Axis.horizontal,
-        itemCount: days.length,
-        separatorBuilder: (_, __) => const SizedBox(width: 10),
-        itemBuilder: (_, i) {
-          final d = days[i];
-          final today = dayKey(d) == dayKey(now);
-          return Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Text(weekdayShort(d.weekday).substring(0, 1), style: TextStyle(fontSize: 10.5, color: today ? Accent.color : C.mute, fontWeight: FontWeight.w600)),
-              const SizedBox(height: 8),
-              AnimatedContainer(
-                duration: const Duration(milliseconds: 300),
-                width: 42,
-                height: 42,
-                alignment: Alignment.center,
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  color: today ? Accent.color : Colors.white.withValues(alpha: 0.06),
-                  border: today ? null : Border.all(color: Colors.white.withValues(alpha: 0.14)),
-                  boxShadow: today ? [BoxShadow(color: Accent.color.withValues(alpha: 0.4), blurRadius: 16, offset: const Offset(0, 6))] : [],
-                ),
-                child: Text('${d.day}', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700, color: today ? C.base : C.text)),
-              ),
-            ],
-          );
-        },
+    final path = widget.store.settings.profilePicturePath;
+    final hasImage = path != null && File(path).existsSync();
+    final name = widget.store.settings.name.trim();
+    final initials = name.isEmpty ? '' : name[0].toUpperCase();
+
+    return GestureDetector(
+      onTap: _pick,
+      child: Container(
+        width: 52,
+        height: 52,
+        alignment: Alignment.center,
+        decoration: BoxDecoration(
+          shape: BoxShape.circle,
+          color: Colors.white.withValues(alpha: 0.08),
+          border: Border.all(color: Colors.white.withValues(alpha: 0.24), width: 1.4),
+          image: hasImage ? DecorationImage(image: FileImage(File(path)), fit: BoxFit.cover) : null,
+        ),
+        child: hasImage
+            ? null
+            : (initials.isEmpty
+                ? const Icon(Icons.person_rounded, color: C.mute, size: 24)
+                : Text(initials, style: const TextStyle(fontSize: 19, fontWeight: FontWeight.w700, color: C.text))),
       ),
     );
   }
