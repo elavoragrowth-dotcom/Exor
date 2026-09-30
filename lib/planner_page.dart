@@ -47,6 +47,7 @@ class _PlannerPageState extends State<PlannerPage> {
     final store = widget.store;
     final s = store.settings;
     final week = _weekAround(_selected);
+    final selectedIndex = week.indexWhere((d) => dayKey(d) == dayKey(_selected));
     final blocks = store.blocksOn(_selected);
     final totalHours = (s.dayEndHour - s.dayStartHour).clamp(1, 24);
     final now = DateTime.now();
@@ -64,45 +65,13 @@ class _PlannerPageState extends State<PlannerPage> {
               const Reveal(delayMs: 100, child: Text('Shape your', style: h1Light)),
               const Reveal(delayMs: 180, child: Text('day.', style: h1Bold)),
               const SizedBox(height: 16),
+              // FIX 3: single sliding highlight — never two pills lit at once.
               Reveal(
                 delayMs: 260,
-                child: Row(
-                  children: week.map((d) {
-                    final on = dayKey(d) == dayKey(_selected);
-                    return Expanded(
-                      child: GestureDetector(
-                        onTap: () {
-                          HapticFeedback.selectionClick();
-                          setState(() => _selected = d);
-                        },
-                        child: AnimatedContainer(
-                          duration: const Duration(milliseconds: 220),
-                          margin: const EdgeInsets.symmetric(horizontal: 3),
-                          padding: const EdgeInsets.symmetric(vertical: 11),
-                          decoration: BoxDecoration(
-                            gradient: on
-                                ? null
-                                : LinearGradient(
-                                    begin: Alignment.topLeft,
-                                    end: Alignment.bottomRight,
-                                    colors: [Colors.white.withValues(alpha: 0.07), Colors.white.withValues(alpha: 0.03)],
-                                  ),
-                            color: on ? Accent.color : null,
-                            borderRadius: BorderRadius.circular(20),
-                            border: on ? null : Border.all(color: Colors.white.withValues(alpha: 0.12)),
-                            boxShadow: on ? [BoxShadow(color: Accent.color.withValues(alpha: 0.35), blurRadius: 16, offset: const Offset(0, 6))] : [],
-                          ),
-                          child: Column(
-                            children: [
-                              Text(weekdayShort(d.weekday).substring(0, 1), style: TextStyle(fontSize: 10, fontWeight: FontWeight.w600, color: on ? C.base : C.mute)),
-                              const SizedBox(height: 4),
-                              Text('${d.day}', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w700, color: on ? C.base : C.text)),
-                            ],
-                          ),
-                        ),
-                      ),
-                    );
-                  }).toList(),
+                child: SlidingDayStrip(
+                  days: week,
+                  selectedIndex: selectedIndex < 0 ? 0 : selectedIndex,
+                  onSelect: (i) => setState(() => _selected = week[i]),
                 ),
               ),
             ],
@@ -140,7 +109,7 @@ class _PlannerPageState extends State<PlannerPage> {
                         height: math.max(30.0, b.durationMinutes / 60 * hourHeight - 4),
                         child: GestureDetector(
                           onTap: () => _editBlock(context, b),
-                          child: BlockCard(block: b, onToggle: () => store.toggleBlock(b)),
+                          child: BlockCard(key: ValueKey(b.id), block: b, store: store),
                         ),
                       ),
                     if (isToday)
@@ -178,13 +147,22 @@ class _PlannerPageState extends State<PlannerPage> {
   }
 }
 
-class BlockCard extends StatelessWidget {
-  const BlockCard({super.key, required this.block, required this.onToggle});
+/// FIX 4: the planner block now fires the same shared completion burst as
+/// habits, and only when transitioning TO done (not when un-checking).
+class BlockCard extends StatefulWidget {
+  const BlockCard({super.key, required this.block, required this.store});
   final PlannerBlock block;
-  final VoidCallback onToggle;
+  final AppStore store;
+  @override
+  State<BlockCard> createState() => _BlockCardState();
+}
+
+class _BlockCardState extends State<BlockCard> {
+  final GlobalKey _checkKey = GlobalKey();
 
   @override
   Widget build(BuildContext context) {
+    final block = widget.block;
     final color = priorityColor(block.priority);
     return Glass(
       radius: 18,
@@ -215,7 +193,13 @@ class BlockCard extends StatelessWidget {
             ),
           ),
           GestureDetector(
-            onTap: onToggle,
+            key: _checkKey,
+            onTap: () {
+              final willBeDone = !block.done;
+              HapticFeedback.mediumImpact();
+              if (willBeDone) fireCompletionBurst(context, _checkKey, color);
+              widget.store.toggleBlock(block);
+            },
             child: Icon(block.done ? Icons.check_circle_rounded : Icons.circle_outlined, color: block.done ? color : C.mute, size: 22),
           ),
         ],
