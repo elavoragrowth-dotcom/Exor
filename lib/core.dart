@@ -23,9 +23,12 @@ class Accent {
   static const List<String> names = ['Lime', 'Violet', 'Teal', 'Orange', 'Coral', 'Blue'];
 }
 
+enum GlassStyle { frosted, clear }
+
 class GlassConfig {
   static double blur = 24;
   static double auroraIntensity = 1.0;
+  static GlassStyle style = GlassStyle.frosted;
 }
 
 const List<IconData> habitIcons = [
@@ -77,6 +80,17 @@ String priorityLabel(String priority) {
       return 'Low';
     default:
       return 'Medium';
+  }
+}
+
+String habitTypeLabel(String type) {
+  switch (type) {
+    case 'avoid':
+      return 'Avoid';
+    case 'amount':
+      return 'Amount';
+    default:
+      return 'Normal';
   }
 }
 
@@ -228,6 +242,10 @@ class Kicker extends StatelessWidget {
       );
 }
 
+/// FIX 2: a single continuous 1px border on every side (no mixed per-side
+/// colours, which is what caused the border to look like it broke near the
+/// corners). The "glassy" top sheen is now a separate 1px gradient line
+/// drawn *inside* the border, not part of the border itself.
 class Glass extends StatelessWidget {
   const Glass({super.key, required this.child, this.padding = const EdgeInsets.all(20), this.radius = 28, this.tint = 0.08, this.glow = true});
   final Widget child;
@@ -239,32 +257,46 @@ class Glass extends StatelessWidget {
   Widget build(BuildContext context) {
     final br = BorderRadius.circular(radius);
     final accent = Accent.color;
+    final clear = GlassConfig.style == GlassStyle.clear;
+    final blurAmt = clear ? (GlassConfig.blur * 0.4).clamp(4.0, 40.0) : GlassConfig.blur;
+    final baseAlpha = clear ? tint * 0.4 : tint;
     return RepaintBoundary(
       child: ClipRRect(
         borderRadius: br,
         child: BackdropFilter(
-          filter: ImageFilter.blur(sigmaX: GlassConfig.blur, sigmaY: GlassConfig.blur),
+          filter: ImageFilter.blur(sigmaX: blurAmt, sigmaY: blurAmt),
           child: Container(
-            padding: padding,
             decoration: BoxDecoration(
               borderRadius: br,
               gradient: LinearGradient(
                 begin: Alignment.topLeft,
                 end: Alignment.bottomRight,
-                colors: [Colors.white.withValues(alpha: tint + 0.06), Colors.white.withValues(alpha: tint * 0.45)],
+                colors: [Colors.white.withValues(alpha: baseAlpha + 0.06), Colors.white.withValues(alpha: baseAlpha * 0.4)],
               ),
-              border: Border(
-                top: BorderSide(color: Colors.white.withValues(alpha: 0.34), width: 1),
-                left: BorderSide(color: Colors.white.withValues(alpha: 0.14), width: 1),
-                right: BorderSide(color: Colors.white.withValues(alpha: 0.14), width: 1),
-                bottom: BorderSide(color: Colors.white.withValues(alpha: 0.14), width: 1),
-              ),
+              border: Border.all(color: Colors.white.withValues(alpha: clear ? 0.32 : 0.22), width: 1),
               boxShadow: [
-                BoxShadow(color: Colors.black.withValues(alpha: 0.35), blurRadius: 26, offset: const Offset(0, 12)),
+                BoxShadow(color: Colors.black.withValues(alpha: clear ? 0.18 : 0.35), blurRadius: 26, offset: const Offset(0, 12)),
                 if (glow) BoxShadow(color: accent.withValues(alpha: 0.10), blurRadius: 36),
               ],
             ),
-            child: child,
+            child: Stack(
+              children: [
+                Positioned(
+                  left: 1,
+                  right: 1,
+                  top: 1,
+                  child: Container(
+                    height: 1,
+                    decoration: BoxDecoration(
+                      gradient: LinearGradient(
+                        colors: [Colors.white.withValues(alpha: 0), Colors.white.withValues(alpha: clear ? 0.7 : 0.5), Colors.white.withValues(alpha: 0)],
+                      ),
+                    ),
+                  ),
+                ),
+                Padding(padding: padding, child: child),
+              ],
+            ),
           ),
         ),
       ),
@@ -291,6 +323,7 @@ class SolidCard extends StatelessWidget {
           end: Alignment.bottomRight,
           colors: [base, Color.lerp(base, Colors.black, 0.32) ?? base],
         ),
+        border: Border.all(color: Colors.white.withValues(alpha: 0.18), width: 1),
         boxShadow: [BoxShadow(color: base.withValues(alpha: 0.4), blurRadius: 30, offset: const Offset(0, 14))],
       ),
       child: child,
@@ -301,6 +334,209 @@ class SolidCard extends StatelessWidget {
 class NoGlowScrollBehavior extends MaterialScrollBehavior {
   @override
   Widget buildOverscrollIndicator(BuildContext context, Widget child, ScrollableDetails details) => child;
+}
+
+/// FIX 1 + FIX 3: one shared strip with a single sliding highlight.
+/// Because there is only ever one highlight shape (a fixed 42x42 circle that
+/// slides between positions with AnimatedPositioned), it's structurally
+/// impossible for two pills to be lit at once, and impossible for the glow
+/// to render as anything but a perfect circle.
+class SlidingDayStrip extends StatelessWidget {
+  const SlidingDayStrip({super.key, required this.days, required this.selectedIndex, this.onSelect, this.highlightColor});
+  final List<DateTime> days;
+  final int selectedIndex;
+  final ValueChanged<int>? onSelect;
+  final Color? highlightColor;
+
+  @override
+  Widget build(BuildContext context) {
+    final color = highlightColor ?? Accent.color;
+    return Glass(
+      radius: 30,
+      padding: const EdgeInsets.all(6),
+      child: LayoutBuilder(
+        builder: (context, cons) {
+          final n = days.length;
+          final cellWidth = cons.maxWidth / n;
+          return SizedBox(
+            height: 64,
+            child: Stack(
+              children: [
+                AnimatedPositioned(
+                  duration: const Duration(milliseconds: 260),
+                  curve: Curves.easeOutCubic,
+                  left: cellWidth * selectedIndex,
+                  top: 0,
+                  width: cellWidth,
+                  height: 64,
+                  child: Center(
+                    child: Container(
+                      width: 42,
+                      height: 42,
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        color: color,
+                        boxShadow: [BoxShadow(color: color.withValues(alpha: 0.45), blurRadius: 16, offset: const Offset(0, 6))],
+                      ),
+                    ),
+                  ),
+                ),
+                Row(
+                  children: List.generate(n, (i) {
+                    final d = days[i];
+                    final on = i == selectedIndex;
+                    return SizedBox(
+                      width: cellWidth,
+                      height: 64,
+                      child: GestureDetector(
+                        behavior: HitTestBehavior.opaque,
+                        onTap: onSelect == null
+                            ? null
+                            : () {
+                                HapticFeedback.selectionClick();
+                                onSelect!(i);
+                              },
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Text(weekdayShort(d.weekday).substring(0, 1), style: TextStyle(fontSize: 10, fontWeight: FontWeight.w600, color: on ? color : C.mute)),
+                            const SizedBox(height: 6),
+                            AnimatedDefaultTextStyle(
+                              duration: const Duration(milliseconds: 200),
+                              style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700, color: on ? C.base : C.text),
+                              child: Text('${d.day}'),
+                            ),
+                          ],
+                        ),
+                      ),
+                    );
+                  }),
+                ),
+              ],
+            ),
+          );
+        },
+      ),
+    );
+  }
+}
+
+/// FIX 4: one shared completion burst, used by habits, planner blocks, and
+/// anything else that gets marked done. Reused instead of a per-screen copy.
+class CompletionBurst extends StatefulWidget {
+  const CompletionBurst({super.key, required this.center, required this.color, required this.onDone});
+  final Offset center;
+  final Color color;
+  final VoidCallback onDone;
+  @override
+  State<CompletionBurst> createState() => _CompletionBurstState();
+}
+
+class _CompletionBurstState extends State<CompletionBurst> with SingleTickerProviderStateMixin {
+  late final AnimationController _c = AnimationController(vsync: this, duration: const Duration(milliseconds: 600));
+  late final List<double> _angles = List.generate(12, (i) => (i / 12) * 2 * math.pi + math.Random(i).nextDouble() * 0.3);
+
+  @override
+  void initState() {
+    super.initState();
+    _c.forward().whenComplete(widget.onDone);
+  }
+
+  @override
+  void dispose() {
+    _c.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return IgnorePointer(
+      child: AnimatedBuilder(
+        animation: _c,
+        builder: (_, __) {
+          final t = Curves.easeOut.transform(_c.value);
+          return Stack(
+            children: _angles.map((a) {
+              final dist = 44 * t;
+              final dx = widget.center.dx + math.cos(a) * dist;
+              final dy = widget.center.dy + math.sin(a) * dist;
+              final size = 6 * (1 - t) + 2;
+              return Positioned(
+                left: dx - size / 2,
+                top: dy - size / 2,
+                child: Opacity(
+                  opacity: (1 - t).clamp(0, 1).toDouble(),
+                  child: Container(width: size, height: size, decoration: BoxDecoration(color: widget.color, shape: BoxShape.circle)),
+                ),
+              );
+            }).toList(),
+          );
+        },
+      ),
+    );
+  }
+}
+
+void fireCompletionBurst(BuildContext context, GlobalKey anchorKey, Color color) {
+  final box = anchorKey.currentContext?.findRenderObject() as RenderBox?;
+  if (box == null) return;
+  final pos = box.localToGlobal(box.size.center(Offset.zero));
+  final overlay = Overlay.of(context);
+  late OverlayEntry entry;
+  entry = OverlayEntry(builder: (_) => CompletionBurst(center: pos, color: color, onDone: () => entry.remove()));
+  overlay.insert(entry);
+}
+
+/// FIX 6 (day-complete celebration): a short glass banner, not a full
+/// takeover — stays out of the way of quickly finishing several items.
+void showDayCompleteBanner(BuildContext context) {
+  final overlay = Overlay.of(context);
+  late OverlayEntry entry;
+  entry = OverlayEntry(
+    builder: (ctx) => Positioned(
+      top: MediaQuery.of(ctx).padding.top + 12,
+      left: 20,
+      right: 20,
+      child: _FadeInOut(
+        child: Glass(
+          radius: 22,
+          padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
+          child: Row(
+            children: [
+              const Icon(Icons.emoji_events_rounded, color: C.lime, size: 22),
+              const SizedBox(width: 12),
+              const Expanded(child: Text('All habits done today ✦', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: C.text))),
+            ],
+          ),
+        ),
+      ),
+    ),
+  );
+  overlay.insert(entry);
+  Future.delayed(const Duration(milliseconds: 2200), () => entry.remove());
+}
+
+class _FadeInOut extends StatefulWidget {
+  const _FadeInOut({required this.child});
+  final Widget child;
+  @override
+  State<_FadeInOut> createState() => _FadeInOutState();
+}
+
+class _FadeInOutState extends State<_FadeInOut> with SingleTickerProviderStateMixin {
+  late final AnimationController _c = AnimationController(vsync: this, duration: const Duration(milliseconds: 300))..forward();
+
+  @override
+  void dispose() {
+    _c.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => FadeTransition(
+        opacity: _c,
+        child: SlideTransition(position: Tween<Offset>(begin: const Offset(0, -0.3), end: Offset.zero).animate(CurvedAnimation(parent: _c, curve: Curves.easeOutCubic)), child: widget.child),
+      );
 }
 
 class Reveal extends StatefulWidget {
@@ -387,7 +623,6 @@ class _PillButtonState extends State<PillButton> {
     );
   }
 }
-
 class Chip2 extends StatelessWidget {
   const Chip2(this.text, {super.key, this.color = C.lime, this.selected = true});
   final String text;
@@ -423,7 +658,7 @@ class GlassSheet extends StatelessWidget {
               decoration: BoxDecoration(
                 color: const Color(0xFF16161C).withValues(alpha: 0.92),
                 borderRadius: BorderRadius.circular(32),
-                border: Border.all(color: Colors.white.withValues(alpha: 0.14)),
+                border: Border.all(color: Colors.white.withValues(alpha: 0.16)),
               ),
               padding: const EdgeInsets.fromLTRB(22, 14, 22, 22),
               child: SingleChildScrollView(
@@ -465,3 +700,5 @@ class SectionLabel extends StatelessWidget {
         child: Text(text, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: C.mute, letterSpacing: 0.5)),
       );
 }
+
+  
