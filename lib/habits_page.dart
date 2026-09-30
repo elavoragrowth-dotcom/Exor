@@ -32,7 +32,7 @@ class _HabitsPageState extends State<HabitsPage> {
     final store = widget.store;
     final now = DateTime.now();
     final total = store.habits.where((h) => store.isDue(h, now)).length;
-    final done = store.habits.where((h) => store.isDue(h, now) && store.isDoneOn(h, now)).length;
+    final done = store.habits.where((h) => store.isDue(h, now) && store.successOn(h, now)).length;
     final cats = ['All', ...{for (final h in store.habits) h.category}];
     var list = store.habits;
     if (_filter != 'All') list = list.where((h) => h.category == _filter).toList();
@@ -172,6 +172,8 @@ class _HabitsPageState extends State<HabitsPage> {
       );
 }
 
+/// FIX 6: type-aware habit card — normal (checkbox), avoid (log a slip),
+/// amount (increment toward a daily goal). FIX 4: uses the shared burst.
 class HabitCard extends StatefulWidget {
   const HabitCard({super.key, required this.store, required this.habit, required this.onOpen});
   final AppStore store;
@@ -182,16 +184,112 @@ class HabitCard extends StatefulWidget {
 }
 
 class _HabitCardState extends State<HabitCard> {
-  final GlobalKey _boxKey = GlobalKey();
+  final GlobalKey _actionKey = GlobalKey();
 
-  void _fireBurst() {
-    final box = _boxKey.currentContext?.findRenderObject() as RenderBox?;
-    if (box == null) return;
-    final pos = box.localToGlobal(box.size.center(Offset.zero));
-    final overlay = Overlay.of(context);
-    late OverlayEntry entry;
-    entry = OverlayEntry(builder: (_) => BurstEffect(center: pos, color: widget.habit.color, onDone: () => entry.remove()));
-    overlay.insert(entry);
+  Future<void> _afterToggle(bool wasAllDoneBefore) async {
+    if (!wasAllDoneBefore && widget.store.allDueDoneToday() && mounted) {
+      showDayCompleteBanner(context);
+    }
+  }
+
+  void _tapNormal() async {
+    final store = widget.store;
+    final h = widget.habit;
+    final now = DateTime.now();
+    final wasAll = store.allDueDoneToday();
+    final becomingDone = !store.isDoneOn(h, now);
+    HapticFeedback.mediumImpact();
+    if (becomingDone) fireCompletionBurst(context, _actionKey, h.color);
+    await store.toggleHabit(h, now);
+    _afterToggle(wasAll);
+  }
+
+  void _tapAvoid() async {
+    final store = widget.store;
+    final h = widget.habit;
+    final now = DateTime.now();
+    HapticFeedback.lightImpact();
+    await store.toggleHabit(h, now); // done == slipped, for avoid habits
+  }
+
+  void _incrementAmount() async {
+    final store = widget.store;
+    final h = widget.habit;
+    final now = DateTime.now();
+    final wasAll = store.allDueDoneToday();
+    final current = store.amountOn(h, now);
+    final wasGoalReached = current >= h.amountGoal;
+    final next = current + 1;
+    HapticFeedback.lightImpact();
+    await store.setAmount(h, now, next);
+    if (!wasGoalReached && next >= h.amountGoal) {
+      fireCompletionBurst(context, _actionKey, h.color);
+      HapticFeedback.mediumImpact();
+    }
+    _afterToggle(wasAll);
+  }
+
+  Widget _trailingControl() {
+    final store = widget.store;
+    final h = widget.habit;
+    final now = DateTime.now();
+
+    if (h.type == 'avoid') {
+      final slipped = store.isDoneOn(h, now);
+      return GestureDetector(
+        key: _actionKey,
+        onTap: _tapAvoid,
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 220),
+          width: 34,
+          height: 34,
+          decoration: BoxDecoration(
+            shape: BoxShape.circle,
+            color: slipped ? C.coral.withValues(alpha: 0.18) : Colors.transparent,
+            border: Border.all(color: slipped ? C.coral : Colors.white.withValues(alpha: 0.3), width: 1.6),
+          ),
+          child: Icon(slipped ? Icons.close_rounded : Icons.shield_outlined, color: slipped ? C.coral : Colors.white.withValues(alpha: 0.6), size: 18),
+        ),
+      );
+    }
+
+    if (h.type == 'amount') {
+      final value = store.amountOn(h, now);
+      final reached = value >= h.amountGoal;
+      return GestureDetector(
+        key: _actionKey,
+        onTap: _incrementAmount,
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+          decoration: BoxDecoration(
+            color: reached ? h.color : Colors.white.withValues(alpha: 0.08),
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(color: reached ? h.color : Colors.white.withValues(alpha: 0.2)),
+          ),
+          child: Text(
+            '${value.toStringAsFixed(value.truncateToDouble() == value ? 0 : 1)}/${h.amountGoal.toStringAsFixed(h.amountGoal.truncateToDouble() == h.amountGoal ? 0 : 1)}',
+            style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w700, color: reached ? C.base : C.text),
+          ),
+        ),
+      );
+    }
+
+    final done = store.isDoneOn(h, now);
+    return GestureDetector(
+      key: _actionKey,
+      onTap: _tapNormal,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 220),
+        width: 34,
+        height: 34,
+        decoration: BoxDecoration(
+          shape: BoxShape.circle,
+          color: done ? h.color : Colors.transparent,
+          border: Border.all(color: done ? h.color : Colors.white.withValues(alpha: 0.3), width: 1.6),
+        ),
+        child: done ? const Icon(Icons.check_rounded, color: C.base, size: 20) : null,
+      ),
+    );
   }
 
   @override
@@ -199,7 +297,6 @@ class _HabitCardState extends State<HabitCard> {
     final store = widget.store;
     final h = widget.habit;
     final now = DateTime.now();
-    final done = store.isDoneOn(h, now);
     final streak = store.currentStreak(h);
     final week = List.generate(7, (i) => now.subtract(Duration(days: now.weekday - 1 - i)));
 
@@ -231,36 +328,22 @@ class _HabitCardState extends State<HabitCard> {
                         Text('$streak', style: const TextStyle(fontSize: 12, color: C.mute)),
                         const SizedBox(width: 8),
                         Chip2(h.category, color: categoryColor(h.category)),
+                        if (h.type != 'normal') ...[
+                          const SizedBox(width: 6),
+                          Chip2(habitTypeLabel(h.type), color: C.violet),
+                        ],
                       ]),
                     ],
                   ),
                 ),
-                GestureDetector(
-                  key: _boxKey,
-                  onTap: () {
-                    HapticFeedback.mediumImpact();
-                    if (!done) _fireBurst();
-                    store.toggleHabit(h, now);
-                  },
-                  child: AnimatedContainer(
-                    duration: const Duration(milliseconds: 220),
-                    width: 34,
-                    height: 34,
-                    decoration: BoxDecoration(
-                      shape: BoxShape.circle,
-                      color: done ? h.color : Colors.transparent,
-                      border: Border.all(color: done ? h.color : Colors.white.withValues(alpha: 0.3), width: 1.6),
-                    ),
-                    child: done ? const Icon(Icons.check_rounded, color: C.base, size: 20) : null,
-                  ),
-                ),
+                _trailingControl(),
               ],
             ),
             const SizedBox(height: 14),
             Row(
               children: week.map((d) {
                 final due = store.isDue(h, d);
-                final dn = store.isDoneOn(h, d);
+                final ok = store.successOn(h, d);
                 final today = dayKey(d) == dayKey(now);
                 return Expanded(
                   child: Column(
@@ -272,7 +355,7 @@ class _HabitCardState extends State<HabitCard> {
                         height: 8,
                         decoration: BoxDecoration(
                           shape: BoxShape.circle,
-                          color: !due ? Colors.white.withValues(alpha: 0.08) : (dn ? h.color : Colors.white.withValues(alpha: 0.18)),
+                          color: !due ? Colors.white.withValues(alpha: 0.08) : (ok ? h.color : Colors.white.withValues(alpha: 0.18)),
                         ),
                       ),
                     ],
@@ -282,60 +365,6 @@ class _HabitCardState extends State<HabitCard> {
             ),
           ],
         ),
-      ),
-    );
-  }
-}
-
-class BurstEffect extends StatefulWidget {
-  const BurstEffect({super.key, required this.center, required this.color, required this.onDone});
-  final Offset center;
-  final Color color;
-  final VoidCallback onDone;
-  @override
-  State<BurstEffect> createState() => _BurstEffectState();
-}
-
-class _BurstEffectState extends State<BurstEffect> with SingleTickerProviderStateMixin {
-  late final AnimationController _c = AnimationController(vsync: this, duration: const Duration(milliseconds: 650));
-  late final List<double> _angles = List.generate(12, (i) => (i / 12) * 2 * math.pi + math.Random(i).nextDouble() * 0.3);
-
-  @override
-  void initState() {
-    super.initState();
-    _c.forward().whenComplete(widget.onDone);
-  }
-
-  @override
-  void dispose() {
-    _c.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return IgnorePointer(
-      child: AnimatedBuilder(
-        animation: _c,
-        builder: (_, __) {
-          final t = Curves.easeOut.transform(_c.value);
-          return Stack(
-            children: _angles.map((a) {
-              final dist = 46 * t;
-              final dx = widget.center.dx + math.cos(a) * dist;
-              final dy = widget.center.dy + math.sin(a) * dist;
-              final size = 6 * (1 - t) + 2;
-              return Positioned(
-                left: dx - size / 2,
-                top: dy - size / 2,
-                child: Opacity(
-                  opacity: (1 - t).clamp(0, 1).toDouble(),
-                  child: Container(width: size, height: size, decoration: BoxDecoration(color: widget.color, shape: BoxShape.circle)),
-                ),
-              );
-            }).toList(),
-          );
-        },
       ),
     );
   }
@@ -456,7 +485,7 @@ class _HabitDetailPageState extends State<HabitDetailPage> {
                   ],
                 ),
                 const SizedBox(height: 12),
-                Chip2(_repeatLabel(h), color: h.color),
+                Row(children: [Chip2(_repeatLabel(h), color: h.color), const SizedBox(width: 8), Chip2(habitTypeLabel(h.type), color: C.violet)]),
                 const SizedBox(height: 20),
                 Glass(
                   child: Row(
@@ -509,18 +538,6 @@ class _HabitDetailPageState extends State<HabitDetailPage> {
                     );
                   }).toList(),
                 ),
-                const SizedBox(height: 14),
-                _activityView(store, h, now),
-                const SizedBox(height: 10),
-                const Row(
-                  children: [
-                    _LegendDot(color: Color(0xFF4C8DF6), label: 'Note added'),
-                    SizedBox(width: 14),
-                    _LegendDot(color: C.orange, label: 'Planned'),
-                    SizedBox(width: 14),
-                    _LegendDot(color: C.lime, label: 'Completed'),
-                  ],
-                ),
                 const SizedBox(height: 20),
                 Glass(
                   child: Row(
@@ -546,6 +563,8 @@ class _HabitDetailPageState extends State<HabitDetailPage> {
         return h.weekdays.map(weekdayShort).join(' · ');
       case 'timesPerWeek':
         return '${h.timesPerWeek}× per week';
+      case 'everyNDays':
+        return 'Every ${h.everyNDays} days';
       default:
         return 'Daily';
     }
@@ -565,15 +584,15 @@ class _HabitDetailPageState extends State<HabitDetailPage> {
             ],
           ),
         ),
-      );
+      );    
 
-  Widget _activityView(AppStore store, Habit h, DateTime now) {
+Widget _activityView(AppStore store, Habit h, DateTime now) {
     if (_range == 'Week') {
       final start = now.subtract(Duration(days: now.weekday - 1));
       final days = List.generate(7, (i) => start.add(Duration(days: i)));
       return Row(
         children: days.map((d) {
-          final dn = store.isDoneOn(h, d);
+          final ok = store.successOn(h, d);
           final due = store.isDue(h, d);
           final today = dayKey(d) == dayKey(now);
           return Expanded(
@@ -587,10 +606,10 @@ class _HabitDetailPageState extends State<HabitDetailPage> {
                   height: 30,
                   decoration: BoxDecoration(
                     shape: BoxShape.circle,
-                    color: !due ? Colors.white.withValues(alpha: 0.05) : (dn ? h.color : Colors.white.withValues(alpha: 0.10)),
+                    color: !due ? Colors.white.withValues(alpha: 0.05) : (ok ? h.color : Colors.white.withValues(alpha: 0.10)),
                     border: today ? Border.all(color: C.lime, width: 1.4) : null,
                   ),
-                  child: dn ? const Icon(Icons.check_rounded, size: 16, color: C.base) : null,
+                  child: ok ? const Icon(Icons.check_rounded, size: 16, color: C.base) : null,
                 ),
               ],
             ),
@@ -604,14 +623,14 @@ class _HabitDetailPageState extends State<HabitDetailPage> {
         spacing: 7,
         runSpacing: 7,
         children: days.map((d) {
-          final dn = store.isDoneOn(h, d);
+          final ok = store.successOn(h, d);
           final due = store.isDue(h, d);
           return Container(
             width: 22,
             height: 22,
             decoration: BoxDecoration(
               borderRadius: BorderRadius.circular(6),
-              color: !due ? Colors.white.withValues(alpha: 0.05) : (dn ? h.color : Colors.white.withValues(alpha: 0.10)),
+              color: !due ? Colors.white.withValues(alpha: 0.05) : (ok ? h.color : Colors.white.withValues(alpha: 0.10)),
             ),
           );
         }).toList(),
@@ -623,11 +642,11 @@ class _HabitDetailPageState extends State<HabitDetailPage> {
         spacing: 3,
         runSpacing: 3,
         children: days.map((d) {
-          final dn = store.isDoneOn(h, d);
+          final ok = store.successOn(h, d);
           return Container(
             width: 8,
             height: 8,
-            decoration: BoxDecoration(borderRadius: BorderRadius.circular(2), color: dn ? h.color : Colors.white.withValues(alpha: 0.08)),
+            decoration: BoxDecoration(borderRadius: BorderRadius.circular(2), color: ok ? h.color : Colors.white.withValues(alpha: 0.08)),
           );
         }).toList(),
       );
@@ -659,12 +678,16 @@ class HabitEditor extends StatefulWidget {
 
 class _HabitEditorState extends State<HabitEditor> {
   late final TextEditingController _name = TextEditingController(text: widget.existing?.name ?? '');
+  late final TextEditingController _unit = TextEditingController(text: widget.existing?.amountUnit ?? '');
   late int _icon = widget.existing?.iconIndex ?? 0;
   late Color _color = widget.existing?.color ?? C.teal;
   late String _repeat = widget.existing?.repeatType ?? 'daily';
   late List<int> _weekdays = List.of(widget.existing?.weekdays ?? [1, 2, 3, 4, 5]);
   late int _timesPerWeek = widget.existing?.timesPerWeek ?? 3;
+  late int _everyN = widget.existing?.everyNDays ?? 2;
   late String _category = widget.existing?.category ?? 'Study';
+  late String _type = widget.existing?.type ?? 'normal';
+  late int _amountGoal = (widget.existing?.amountGoal ?? 1).round();
   late bool _hasTime = widget.existing?.plannedMinutes != null;
   late int _plannedMinutes = widget.existing?.plannedMinutes ?? 8 * 60;
 
@@ -673,6 +696,7 @@ class _HabitEditorState extends State<HabitEditor> {
   @override
   void dispose() {
     _name.dispose();
+    _unit.dispose();
     super.dispose();
   }
 
@@ -686,8 +710,12 @@ class _HabitEditorState extends State<HabitEditor> {
       h.repeatType = _repeat;
       h.weekdays = _weekdays;
       h.timesPerWeek = _timesPerWeek;
+      h.everyNDays = _everyN;
       h.category = _category;
       h.plannedMinutes = _hasTime ? _plannedMinutes : null;
+      h.type = _type;
+      h.amountUnit = _unit.text.trim();
+      h.amountGoal = _amountGoal.toDouble();
       await widget.store.updateHabit(h);
     } else {
       final h = Habit(
@@ -698,14 +726,19 @@ class _HabitEditorState extends State<HabitEditor> {
         repeatType: _repeat,
         weekdays: _weekdays,
         timesPerWeek: _timesPerWeek,
+        everyNDays: _everyN,
         category: _category,
         plannedMinutes: _hasTime ? _plannedMinutes : null,
+        type: _type,
+        amountUnit: _unit.text.trim(),
+        amountGoal: _amountGoal.toDouble(),
         createdAt: DateTime.now(),
       );
       await widget.store.addHabit(h);
     }
     if (mounted) Navigator.pop(context);
   }
+
   @override
   Widget build(BuildContext context) {
     return Column(
@@ -724,6 +757,40 @@ class _HabitEditorState extends State<HabitEditor> {
             border: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: BorderSide.none),
           ),
         ),
+        const SizedBox(height: 16),
+        const SectionLabel('TYPE'),
+        Wrap(
+          spacing: 8,
+          children: [
+            GestureDetector(onTap: () => setState(() => _type = 'normal'), child: Chip2('Normal', selected: _type == 'normal')),
+            GestureDetector(onTap: () => setState(() => _type = 'avoid'), child: Chip2('Avoid', selected: _type == 'avoid', color: C.coral)),
+            GestureDetector(onTap: () => setState(() => _type = 'amount'), child: Chip2('Amount', selected: _type == 'amount', color: C.teal)),
+          ],
+        ),
+        if (_type == 'amount') ...[
+          const SizedBox(height: 12),
+          Row(
+            children: [
+              Expanded(
+                child: TextField(
+                  controller: _unit,
+                  style: const TextStyle(color: C.text, fontSize: 14),
+                  decoration: InputDecoration(
+                    hintText: 'Unit (e.g. glasses, pages)',
+                    hintStyle: const TextStyle(color: C.mute, fontSize: 13),
+                    filled: true,
+                    fillColor: Colors.white.withValues(alpha: 0.06),
+                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(14), borderSide: BorderSide.none),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 10),
+              IconButton(onPressed: () => setState(() => _amountGoal = (_amountGoal - 1).clamp(1, 999)), icon: const Icon(Icons.remove_circle_outline, color: C.mute)),
+              Text('$_amountGoal', style: const TextStyle(color: C.text, fontSize: 15, fontWeight: FontWeight.w600)),
+              IconButton(onPressed: () => setState(() => _amountGoal = (_amountGoal + 1).clamp(1, 999)), icon: const Icon(Icons.add_circle_outline, color: C.mute)),
+            ],
+          ),
+        ],
         const SizedBox(height: 16),
         const SectionLabel('ICON'),
         SizedBox(
@@ -778,10 +845,12 @@ class _HabitEditorState extends State<HabitEditor> {
         const SectionLabel('REPEAT'),
         Wrap(
           spacing: 8,
+          runSpacing: 8,
           children: [
             GestureDetector(onTap: () => setState(() => _repeat = 'daily'), child: Chip2('Daily', selected: _repeat == 'daily')),
             GestureDetector(onTap: () => setState(() => _repeat = 'weekdays'), child: Chip2('Choose days', selected: _repeat == 'weekdays')),
             GestureDetector(onTap: () => setState(() => _repeat = 'timesPerWeek'), child: Chip2('N per week', selected: _repeat == 'timesPerWeek')),
+            GestureDetector(onTap: () => setState(() => _repeat = 'everyNDays'), child: Chip2('Every N days', selected: _repeat == 'everyNDays')),
           ],
         ),
         if (_repeat == 'weekdays') ...[
@@ -812,6 +881,16 @@ class _HabitEditorState extends State<HabitEditor> {
             ],
           ),
         ],
+        if (_repeat == 'everyNDays') ...[
+          const SizedBox(height: 12),
+          Row(
+            children: [
+              IconButton(onPressed: () => setState(() => _everyN = (_everyN - 1).clamp(2, 30)), icon: const Icon(Icons.remove_circle_outline, color: C.mute)),
+              Text('Every $_everyN days', style: const TextStyle(color: C.text, fontSize: 15)),
+              IconButton(onPressed: () => setState(() => _everyN = (_everyN + 1).clamp(2, 30)), icon: const Icon(Icons.add_circle_outline, color: C.mute)),
+            ],
+          ),
+        ],
         const SizedBox(height: 16),
         Row(
           children: [
@@ -834,4 +913,3 @@ class _HabitEditorState extends State<HabitEditor> {
     );
   }
 }
-      
