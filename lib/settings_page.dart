@@ -178,6 +178,20 @@ class _SettingsPageState extends State<SettingsPage> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
+                const Text('Glass style', style: TextStyle(fontSize: 14.5, color: C.text)),
+                const SizedBox(height: 4),
+                const Text('Frosted: softer, more opaque. Liquid Clear: higher transparency, crisper edges.', style: TextStyle(fontSize: 11.5, color: C.mute)),
+                const SizedBox(height: 10),
+                Row(
+                  children: [
+                    GestureDetector(onTap: () => store.updateSettings((x) => x.glassStyleIndex = 0), child: Chip2('Frosted', selected: s.glassStyleIndex == 0)),
+                    const SizedBox(width: 8),
+                    GestureDetector(onTap: () => store.updateSettings((x) => x.glassStyleIndex = 1), child: Chip2('Liquid Clear', selected: s.glassStyleIndex == 1)),
+                  ],
+                ),
+                const SizedBox(height: 16),
+                Container(height: 1, color: Colors.white.withValues(alpha: 0.08)),
+                const SizedBox(height: 10),
                 const Text('Aurora intensity', style: TextStyle(fontSize: 14.5, color: C.text)),
                 const SizedBox(height: 10),
                 Wrap(
@@ -235,9 +249,9 @@ class _SettingsPageState extends State<SettingsPage> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: const [
-                Text('Daybook · v1.0.5 (Phase 1.5)', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600, color: C.text)),
+                Text('Daybook · v1.0.6 (Fix Pass)', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600, color: C.text)),
                 SizedBox(height: 6),
-                Text('New black-glass theme, colour priorities on the Planner, and a global accent colour.', style: TextStyle(fontSize: 12.5, color: C.mute, height: 1.4)),
+                Text('Fixed glass borders, one-glow date strips, a Frosted/Liquid Clear toggle, and habit types.', style: TextStyle(fontSize: 12.5, color: C.mute, height: 1.4)),
               ],
             ),
           ),
