@@ -268,31 +268,28 @@ class Glass extends StatelessWidget {
           child: Container(
             decoration: BoxDecoration(
               borderRadius: br,
-              gradient: LinearGradient(
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-                colors: [Colors.white.withValues(alpha: baseAlpha + 0.06), Colors.white.withValues(alpha: baseAlpha * 0.4)],
-              ),
-              border: Border.all(color: Colors.white.withValues(alpha: clear ? 0.32 : 0.22), width: 1),
+              color: Colors.white.withValues(alpha: 0.01 + baseAlpha * 0.25),
+              border: Border.all(color: Colors.transparent, width: 1),
               boxShadow: [
                 BoxShadow(color: Colors.black.withValues(alpha: clear ? 0.18 : 0.35), blurRadius: 26, offset: const Offset(0, 12)),
                 if (glow) BoxShadow(color: accent.withValues(alpha: 0.10), blurRadius: 36),
               ],
             ),
             child: Stack(
+              clipBehavior: Clip.none,
               children: [
                 Positioned(
-                  left: 1,
-                  right: 1,
-                  top: 1,
-                  child: Container(
-                    height: 1,
-                    decoration: BoxDecoration(
-                      gradient: LinearGradient(
-                        colors: [Colors.white.withValues(alpha: 0), Colors.white.withValues(alpha: clear ? 0.7 : 0.5), Colors.white.withValues(alpha: 0)],
-                      ),
-                    ),
-                  ),
+                  left: 0,
+                  right: 0,
+                  top: 0,
+                  child: Container(height: 1, color: Colors.white.withValues(alpha: 0.15)),
+                ),
+                Positioned(
+                  left: -1,
+                  right: -1,
+                  top: -1,
+                  bottom: -1,
+                  child: IgnorePointer(child: CustomPaint(painter: LiquidBorderPainter(radius))),
                 ),
                 Padding(padding: padding, child: child),
               ],
@@ -302,6 +299,40 @@ class Glass extends StatelessWidget {
       ),
     );
   }
+}
+
+/// Liquid-glass ring: a 1.4px stroke with a vertical gradient that is bright
+/// at the top and bottom edges and fades to nothing through the middle.
+class LiquidBorderPainter extends CustomPainter {
+  const LiquidBorderPainter(this.radius);
+  final double radius;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    const w = 1.4;
+    final rect = Rect.fromLTWH(w / 2, w / 2, size.width - w, size.height - w);
+    final rrect = RRect.fromRectAndRadius(rect, Radius.circular((radius - w / 2).clamp(0.0, double.infinity)));
+    final paint = Paint()
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = w
+      ..shader = const LinearGradient(
+        begin: Alignment.topCenter,
+        end: Alignment.bottomCenter,
+        colors: [
+          Color.fromRGBO(255, 255, 255, 0.5),
+          Color.fromRGBO(255, 255, 255, 0.2),
+          Color.fromRGBO(255, 255, 255, 0),
+          Color.fromRGBO(255, 255, 255, 0),
+          Color.fromRGBO(255, 255, 255, 0.2),
+          Color.fromRGBO(255, 255, 255, 0.5),
+        ],
+        stops: [0, 0.2, 0.4, 0.6, 0.8, 1],
+      ).createShader(Offset.zero & size);
+    canvas.drawRRect(rrect, paint);
+  }
+
+  @override
+  bool shouldRepaint(LiquidBorderPainter old) => old.radius != radius;
 }
 
 class SolidCard extends StatelessWidget {
@@ -654,26 +685,35 @@ class GlassSheet extends StatelessWidget {
           borderRadius: BorderRadius.circular(32),
           child: BackdropFilter(
             filter: ImageFilter.blur(sigmaX: 30, sigmaY: 30),
-            child: Container(
-              decoration: BoxDecoration(
-                color: const Color(0xFF16161C).withValues(alpha: 0.92),
-                borderRadius: BorderRadius.circular(32),
-                border: Border.all(color: Colors.white.withValues(alpha: 0.16)),
-              ),
-              padding: const EdgeInsets.fromLTRB(22, 14, 22, 22),
-              child: SingleChildScrollView(
-                child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
-                  Center(
-                    child: Container(
-                      width: 40,
-                      height: 4,
-                      margin: const EdgeInsets.only(bottom: 16),
-                      decoration: BoxDecoration(color: Colors.white.withValues(alpha: 0.2), borderRadius: BorderRadius.circular(4)),
-                    ),
+            child: Stack(
+              fit: StackFit.passthrough,
+              clipBehavior: Clip.none,
+              children: [
+                Container(
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF16161C).withValues(alpha: 0.92),
+                    borderRadius: BorderRadius.circular(32),
+                    border: Border.all(color: Colors.transparent),
                   ),
-                  child,
-                ]),
-              ),
+                  padding: const EdgeInsets.fromLTRB(22, 14, 22, 22),
+                  child: SingleChildScrollView(
+                    child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+                      Center(
+                        child: Container(
+                          width: 40,
+                          height: 4,
+                          margin: const EdgeInsets.only(bottom: 16),
+                          decoration: BoxDecoration(color: Colors.white.withValues(alpha: 0.2), borderRadius: BorderRadius.circular(4)),
+                        ),
+                      ),
+                      child,
+                    ]),
+                  ),
+                ),
+                Positioned.fill(
+                  child: IgnorePointer(child: CustomPaint(painter: const LiquidBorderPainter(32))),
+                ),
+              ],
             ),
           ),
         ),
@@ -700,5 +740,3 @@ class SectionLabel extends StatelessWidget {
         child: Text(text, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: C.mute, letterSpacing: 0.5)),
       );
 }
-
-  
