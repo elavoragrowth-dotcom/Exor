@@ -162,7 +162,7 @@ class _SettingsPageState extends State<SettingsPage> {
         ),
         const Padding(
           padding: EdgeInsets.only(top: 8),
-          child: Text('Reminders are stored and ready — actual push alerts arrive next phase.', style: TextStyle(fontSize: 11.5, color: C.mute)),
+          child:Text('Habit reminders follow this switch. Set reminder times inside each habit.', style: TextStyle(fontSize: 11.5, color: C.mute)),
         ),
         const SizedBox(height: 20),
         const SectionLabel('HABITS'),
