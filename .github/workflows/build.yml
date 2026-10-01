@@ -27,17 +27,92 @@ jobs:
           channel: stable
           cache: true
 
-      - name: Download Poppins font
+      - name: Download fonts
         run: |
           mkdir -p assets/fonts
           for w in Light Regular Medium SemiBold Bold; do
             curl -fsSL "https://github.com/google/fonts/raw/main/ofl/poppins/Poppins-$w.ttf" -o "assets/fonts/Poppins-$w.ttf"
           done
+          curl -fsSL "https://github.com/google/fonts/raw/main/ofl/greatvibes/GreatVibes-Regular.ttf" -o "assets/fonts/GreatVibes-Regular.ttf"
 
       - name: Create Android project files
         run: |
           flutter create --org com.abhi --project-name daybook --platforms=android .
           sed -i 's/android:label="[^"]*"/android:label="Daybook"/' android/app/src/main/AndroidManifest.xml
+
+      # Habit reminders need native Android setup. Because android/ is regenerated on every
+      # build, it is re-applied here each time — and the build FAILS if any part did not apply,
+      # so a silently non-working notification build can never be published.
+      - name: Prepare Android for reminders
+        run: |
+          python3 - <<'PY'
+          import pathlib, re, sys
+
+          app = pathlib.Path('android/app')
+
+          # 1) Manifest: permissions + the receivers that actually show scheduled notifications
+          mp = app / 'src/main/AndroidManifest.xml'
+          m = mp.read_text()
+          perms = """
+              <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
+              <uses-permission android:name="android.permission.VIBRATE"/>
+              <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED"/>
+              <uses-permission android:name="android.permission.USE_EXACT_ALARM"/>
+              <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" android:maxSdkVersion="32"/>
+          """
+          receivers = """
+                  <receiver android:exported="false" android:name="com.dexterous.flutterlocalnotifications.ScheduledNotificationReceiver"/>
+                  <receiver android:exported="false" android:name="com.dexterous.flutterlocalnotifications.ScheduledNotificationBootReceiver">
+                      <intent-filter>
+                          <action android:name="android.intent.action.BOOT_COMPLETED"/>
+                          <action android:name="android.intent.action.MY_PACKAGE_REPLACED"/>
+                          <action android:name="android.intent.action.QUICKBOOT_POWERON"/>
+                          <action android:name="com.htc.intent.action.QUICKBOOT_POWERON"/>
+                      </intent-filter>
+                  </receiver>
+          """
+          m = re.sub(r'(<manifest[^>]*>)', lambda x: x.group(1) + perms, m, count=1)
+          m = m.replace('</application>', receivers + '    </application>', 1)
+          mp.write_text(m)
+
+          # 2) Gradle: core library desugaring (required by the notification plugin)
+          kts = app / 'build.gradle.kts'
+          groovy = app / 'build.gradle'
+          if kts.exists():
+              g = kts.read_text()
+              g = re.sub(r'(compileOptions\s*\{)', lambda x: x.group(1) + '\n        isCoreLibraryDesugaringEnabled = true', g, count=1)
+              dep = 'coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.4")'
+              if re.search(r'^dependencies\s*\{', g, re.M):
+                  g = re.sub(r'(^dependencies\s*\{)', lambda x: x.group(1) + '\n    ' + dep, g, count=1, flags=re.M)
+              else:
+                  g += '\ndependencies {\n    ' + dep + '\n}\n'
+              kts.write_text(g)
+          elif groovy.exists():
+              g = groovy.read_text()
+              g = re.sub(r'(compileOptions\s*\{)', lambda x: x.group(1) + '\n        coreLibraryDesugaringEnabled true', g, count=1)
+              dep = "coreLibraryDesugaring 'com.android.tools:desugar_jdk_libs:2.1.4'"
+              if re.search(r'^dependencies\s*\{', g, re.M):
+                  g = re.sub(r'(^dependencies\s*\{)', lambda x: x.group(1) + '\n    ' + dep, g, count=1, flags=re.M)
+              else:
+                  g += '\ndependencies {\n    ' + dep + '\n}\n'
+              groovy.write_text(g)
+          else:
+              sys.exit('No android/app/build.gradle(.kts) found')
+
+          # 3) Keep the launcher icon (used as the notification icon) through resource shrinking
+          raw = app / 'src/main/res/raw'
+          raw.mkdir(parents=True, exist_ok=True)
+          (raw / 'keep.xml').write_text('<?xml version="1.0" encoding="utf-8"?>\n<resources xmlns:tools="http://schemas.android.com/tools" tools:keep="@mipmap/*,@drawable/*" />\n')
+          PY
+
+          echo "---- verifying native setup ----"
+          grep -q "ScheduledNotificationReceiver" android/app/src/main/AndroidManifest.xml
+          grep -q "POST_NOTIFICATIONS" android/app/src/main/AndroidManifest.xml
+          grep -q "USE_EXACT_ALARM" android/app/src/main/AndroidManifest.xml
+          grep -Eq "isCoreLibraryDesugaringEnabled|coreLibraryDesugaringEnabled" android/app/build.gradle*
+          grep -q "desugar_jdk_libs" android/app/build.gradle*
+          test -f android/app/src/main/res/raw/keep.xml
+          echo "native reminder setup OK"
 
       - name: Create signing key (first run only)
         run: |
@@ -80,3 +155,4 @@ jobs:
             --repo ${{ github.repository }} \
             --title "Daybook build ${{ github.run_number }}" \
             --notes "Commit ${{ github.sha }}"
+            
