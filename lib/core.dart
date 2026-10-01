@@ -602,10 +602,10 @@ class _RevealState extends State<Reveal> with SingleTickerProviderStateMixin {
 }
 
 class PillButton extends StatefulWidget {
-  const PillButton({super.key, required this.label, required this.onTap, this.enabled = true, this.filled = true, this.color});
+    const PillButton({super.key, required this.label, required this.onTap, this.enabled = true, this.filled = true, this.color, this.compactGlow = false});
   final String label;
   final VoidCallback onTap;
-  final bool enabled, filled;
+    final bool enabled, filled, compactGlow;
   final Color? color;
   @override
   State<PillButton> createState() => _PillButtonState();
@@ -642,7 +642,7 @@ class _PillButtonState extends State<PillButton> {
             borderRadius: BorderRadius.circular(40),
             border: (!widget.filled && on) ? Border.all(color: col.withValues(alpha: 0.6)) : null,
             boxShadow: (on && widget.filled)
-                ? [BoxShadow(color: col.withValues(alpha: 0.35), blurRadius: 26, offset: const Offset(0, 8))]
+                ? [BoxShadow(color: col.withValues(alpha: 0.35), blurRadius: widget.compactGlow ? 16 : 26, spreadRadius: widget.compactGlow ? -3 : 0, offset: Offset(0, widget.compactGlow ? 6 : 8))]
                 : [],
           ),
           child: Text(
