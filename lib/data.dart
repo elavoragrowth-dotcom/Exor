@@ -1,9 +1,19 @@
 import 'dart:convert';
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'core.dart';
+import 'notifications.dart';
 
 String newId() => DateTime.now().microsecondsSinceEpoch.toString();
+
+class ChecklistItem {
+  ChecklistItem({required this.id, required this.title});
+  final String id;
+  String title;
+  Map<String, dynamic> toJson() => {'id': id, 'title': title};
+  factory ChecklistItem.fromJson(Map<String, dynamic> j) => ChecklistItem(id: '${j['id']}', title: '${j['title'] ?? ''}');
+}
 
 class Habit {
   Habit({
@@ -22,7 +32,14 @@ class Habit {
     this.amountUnit = '',
     this.amountGoal = 1,
     required this.createdAt,
-  });
+    this.description = '',
+    List<ChecklistItem>? checklist,
+    this.coverImagePath,
+    List<int>? reminders,
+    this.focusEnabled = true,
+    this.notifBase = 0,
+  })  : checklist = checklist ?? <ChecklistItem>[],
+        reminders = reminders ?? <int>[];
 
   final String id;
   String name;
@@ -40,8 +57,19 @@ class Habit {
   double amountGoal;
   final DateTime createdAt;
 
+  // ── added in v1.1.0 — all optional, so older saved habits load unchanged ──
+  String description;
+  List<ChecklistItem> checklist;
+  String? coverImagePath; // per-habit cover image (never a global background)
+  List<int> reminders; // minutes since midnight
+  bool focusEnabled;
+  int notifBase; // owns notification ids notifBase*200 .. +199
+
   Color get color => Color(colorValue);
   IconData get icon => habitIcons[iconIndex % habitIcons.length];
+
+  /// A checklist only applies to normal habits that actually have steps.
+  bool get hasChecklist => type == 'normal' && checklist.isNotEmpty;
 
   Map<String, dynamic> toJson() => {
         'id': id,
@@ -59,6 +87,12 @@ class Habit {
         'amountUnit': amountUnit,
         'amountGoal': amountGoal,
         'createdAt': createdAt.toIso8601String(),
+        'description': description,
+        'checklist': checklist.map((e) => e.toJson()).toList(),
+        'coverImagePath': coverImagePath,
+        'reminders': reminders,
+        'focusEnabled': focusEnabled,
+        'notifBase': notifBase,
       };
 
   factory Habit.fromJson(Map<String, dynamic> j) => Habit(
@@ -77,19 +111,27 @@ class Habit {
         amountUnit: j['amountUnit'] ?? '',
         amountGoal: (j['amountGoal'] ?? 1).toDouble(),
         createdAt: DateTime.tryParse(j['createdAt'] ?? '') ?? DateTime.now(),
+        description: j['description'] ?? '',
+        checklist: (j['checklist'] as List?)?.map((e) => ChecklistItem.fromJson(Map<String, dynamic>.from(e as Map))).toList(),
+        coverImagePath: j['coverImagePath'],
+        reminders: (j['reminders'] as List?)?.map((e) => (e as num).toInt()).toList(),
+        focusEnabled: j['focusEnabled'] ?? true,
+        notifBase: j['notifBase'] ?? 0,
       );
 }
 
 class HabitLog {
-  HabitLog({required this.habitId, required this.date, this.done = false, this.focusSeconds = 0, this.amount = 0, this.note});
+  HabitLog({required this.habitId, required this.date, this.done = false, this.focusSeconds = 0, this.amount = 0, this.note, List<String>? steps})
+      : steps = steps ?? <String>[];
   final String habitId;
   final String date;
   bool done;
   int focusSeconds;
   double amount;
   String? note;
+  List<String> steps; // ids of checklist steps ticked that day
 
-  Map<String, dynamic> toJson() => {'habitId': habitId, 'date': date, 'done': done, 'focusSeconds': focusSeconds, 'amount': amount, 'note': note};
+  Map<String, dynamic> toJson() => {'habitId': habitId, 'date': date, 'done': done, 'focusSeconds': focusSeconds, 'amount': amount, 'note': note, 'steps': steps};
   factory HabitLog.fromJson(Map<String, dynamic> j) => HabitLog(
         habitId: j['habitId'],
         date: j['date'],
@@ -97,6 +139,7 @@ class HabitLog {
         focusSeconds: j['focusSeconds'] ?? 0,
         amount: (j['amount'] ?? 0).toDouble(),
         note: j['note'],
+        steps: (j['steps'] as List?)?.map((e) => '$e').toList(),
       );
 }
 
@@ -219,6 +262,7 @@ class AppStore extends ChangeNotifier {
   static const _kHabits = 'habits_v1';
   static const _kLogs = 'logs_v1';
   static const _kBlocks = 'blocks_v1';
+  static const _kNotifSeq = 'notif_seq_v1';
 
   void _syncStatics() {
     GlassConfig.blur = settings.glassBlur;
@@ -247,6 +291,34 @@ class AppStore extends ChangeNotifier {
         .map((e) => PlannerBlock.fromJson(e as Map<String, dynamic>))
         .toList();
     _syncStatics();
+
+    // Habits saved before reminders existed get their notification id block now.
+    bool assigned = false;
+    for (final h in habits) {
+      if (h.notifBase <= 0) {
+        h.notifBase = _nextNotifBase();
+        assigned = true;
+      }
+    }
+    if (assigned) await _saveHabits();
+
+    // Reminders must never be able to stop the app from starting.
+    try {
+      await NotificationService.init();
+      await syncAllReminders();
+    } catch (_) {}
+  }
+
+  int _nextNotifBase() {
+    final next = (_prefs.getInt(_kNotifSeq) ?? 0) + 1;
+    _prefs.setInt(_kNotifSeq, next);
+    return next;
+  }
+
+  Future<void> syncAllReminders() async {
+    try {
+      await NotificationService.syncAll(habits, settings, isDue);
+    } catch (_) {}
   }
 
   Future<void> _saveSettings() async => _prefs.setString(_kSettings, jsonEncode(settings.toJson()));
@@ -277,31 +349,62 @@ class AppStore extends ChangeNotifier {
   }
 
   Future<void> updateSettings(void Function(AppSettings s) fn) async {
+    final notifBefore = settings.notificationsEnabled;
     fn(settings);
     _syncStatics();
     await _saveSettings();
     notifyListeners();
+    // Only the master reminder switch changes what is scheduled.
+    if (settings.notificationsEnabled != notifBefore) {
+      if (settings.notificationsEnabled) await NotificationService.requestPermission();
+      await syncAllReminders();
+    }
   }
 
   Future<void> addHabit(Habit h) async {
+    if (h.notifBase <= 0) h.notifBase = _nextNotifBase();
     habits.add(h);
     await _saveHabits();
     notifyListeners();
+    await _syncReminders(h);
   }
 
   Future<void> updateHabit(Habit h) async {
+    if (h.notifBase <= 0) h.notifBase = _nextNotifBase();
     final i = habits.indexWhere((e) => e.id == h.id);
     if (i >= 0) habits[i] = h;
     await _saveHabits();
     notifyListeners();
+    await _syncReminders(h);
   }
 
   Future<void> deleteHabit(String id) async {
+    final matches = habits.where((h) => h.id == id).toList();
+    for (final h in matches) {
+      try {
+        await NotificationService.cancelHabit(h);
+      } catch (_) {}
+      _deleteFile(h.coverImagePath);
+    }
     habits.removeWhere((h) => h.id == id);
     logs.removeWhere((l) => l.habitId == id);
     await _saveHabits();
     await _saveLogs();
     notifyListeners();
+  }
+
+  Future<void> _syncReminders(Habit h) async {
+    try {
+      await NotificationService.syncHabit(h, settings, isDue);
+    } catch (_) {}
+  }
+
+  void _deleteFile(String? path) {
+    if (path == null) return;
+    try {
+      final f = File(path);
+      if (f.existsSync()) f.deleteSync();
+    } catch (_) {}
   }
 
   HabitLog _logFor(String habitId, String date) {
@@ -347,6 +450,38 @@ class AppStore extends ChangeNotifier {
   Future<void> toggleHabit(Habit h, DateTime day) async {
     final log = _logFor(h.id, dayKey(day));
     log.done = !log.done;
+    if (h.hasChecklist) {
+      log.steps = log.done ? h.checklist.map((e) => e.id).toList() : <String>[];
+    }
+    await _saveLogs();
+    notifyListeners();
+  }
+
+  // ── checklist ──
+  bool stepDone(Habit h, DateTime day, String stepId) {
+    final l = logs.where((e) => e.habitId == h.id && e.date == dayKey(day)).toList();
+    return l.isNotEmpty && l.first.steps.contains(stepId);
+  }
+
+  int stepsDoneOn(Habit h, DateTime day) {
+    final ids = h.checklist.map((e) => e.id).toSet();
+    final l = logs.where((e) => e.habitId == h.id && e.date == dayKey(day)).toList();
+    if (l.isEmpty) return 0;
+    return l.first.steps.where(ids.contains).length;
+  }
+
+  /// Ticks / unticks one step. The habit is done exactly when every step is ticked,
+  /// so streaks and history keep using the normal `done` flag.
+  Future<void> toggleStep(Habit h, DateTime day, String stepId) async {
+    final log = _logFor(h.id, dayKey(day));
+    if (log.steps.contains(stepId)) {
+      log.steps.remove(stepId);
+    } else {
+      log.steps.add(stepId);
+    }
+    final ids = h.checklist.map((e) => e.id).toSet();
+    log.steps = log.steps.where(ids.contains).toList();
+    log.done = ids.isNotEmpty && ids.every(log.steps.contains);
     await _saveLogs();
     notifyListeners();
   }
@@ -440,6 +575,38 @@ class AppStore extends ChangeNotifier {
     return count;
   }
 
+  /// Share of due days in the last [days] days that succeeded (0..1).
+  /// Today only counts once it is a success, so an unfinished day never reads as a miss.
+  double consistency(Habit h, {int days = 30}) {
+    final today = dateOnly(DateTime.now());
+    final start = dateOnly(h.createdAt);
+    int due = 0, ok = 0;
+    for (int i = 0; i < days; i++) {
+      final d = today.subtract(Duration(days: i));
+      if (d.isBefore(start)) break;
+      if (!isDue(h, d)) continue;
+      final success = successOn(h, d);
+      if (i == 0 && !success) continue;
+      due++;
+      if (success) ok++;
+    }
+    if (due == 0) return 0;
+    if (h.repeatType == 'timesPerWeek') {
+      // "N per week" habits are due every day in the streak maths, so measure against the weekly target.
+      final span = today.difference(start).inDays + 1;
+      final window = span < days ? span : days;
+      final target = window * h.timesPerWeek / 7;
+      return target <= 0 ? 0 : (ok / target).clamp(0.0, 1.0).toDouble();
+    }
+    return ok / due;
+  }
+
+  double overallConsistency({int days = 30}) {
+    if (habits.isEmpty) return 0;
+    final vals = habits.map((h) => consistency(h, days: days)).toList();
+    return vals.reduce((a, b) => a + b) / vals.length;
+  }
+
   Future<void> addBlock(PlannerBlock b) async {
     blocks.add(b);
     await _saveBlocks();
@@ -466,6 +633,9 @@ class AppStore extends ChangeNotifier {
       if (h.isNotEmpty) {
         final log = _logFor(h.first.id, b.date);
         log.done = b.done;
+        if (h.first.hasChecklist) {
+          log.steps = log.done ? h.first.checklist.map((e) => e.id).toList() : <String>[];
+        }
         await _saveLogs();
       }
     }
@@ -489,16 +659,30 @@ class AppStore extends ChangeNotifier {
   Future<bool> importJson(String raw) async {
     try {
       final j = jsonDecode(raw) as Map<String, dynamic>;
-      settings = AppSettings.fromJson(j['settings']);
-      habits = (j['habits'] as List).map((e) => Habit.fromJson(e)).toList();
-      logs = (j['logs'] as List).map((e) => HabitLog.fromJson(e)).toList();
-      blocks = (j['blocks'] as List).map((e) => PlannerBlock.fromJson(e)).toList();
+      final newSettings = AppSettings.fromJson(j['settings']);
+      final newHabits = (j['habits'] as List).map((e) => Habit.fromJson(e)).toList();
+      final newLogs = (j['logs'] as List).map((e) => HabitLog.fromJson(e)).toList();
+      final newBlocks = (j['blocks'] as List).map((e) => PlannerBlock.fromJson(e)).toList();
+      // Drop reminders of the habits being replaced, then give imported habits fresh id blocks.
+      for (final h in habits) {
+        try {
+          await NotificationService.cancelHabit(h);
+        } catch (_) {}
+      }
+      for (final h in newHabits) {
+        h.notifBase = _nextNotifBase();
+      }
+      settings = newSettings;
+      habits = newHabits;
+      logs = newLogs;
+      blocks = newBlocks;
       await _saveSettings();
       await _saveHabits();
       await _saveLogs();
       await _saveBlocks();
       _syncStatics();
       notifyListeners();
+      await syncAllReminders();
       return true;
     } catch (_) {
       return false;
