@@ -39,7 +39,16 @@ class _OnboardingState extends State<Onboarding> {
           const Reveal(delayMs: 100, child: Kicker('WELCOME')),
           const SizedBox(height: 14),
           const Reveal(delayMs: 250, child: Text('Every day is', style: h1Light)),
-          const Reveal(delayMs: 400, child: Text('a page worth filling.', style: h1Bold)),
+          const Reveal(
+            delayMs: 400,
+            child: Text.rich(
+              TextSpan(children: [
+                TextSpan(text: 'a page ', style: h1Bold),
+                TextSpan(text: 'worth filling', style: TextStyle(fontFamily: 'GreatVibes', fontSize: 46, height: 1.0, fontWeight: FontWeight.w400, color: C.lime)),
+                TextSpan(text: '.', style: h1Bold),
+              ]),
+            ),
+          ),
           const SizedBox(height: 24),
           const Reveal(
             delayMs: 600,
