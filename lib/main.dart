@@ -10,6 +10,7 @@ import 'home_page.dart';
 import 'habits_page.dart';
 import 'planner_page.dart';
 import 'settings_page.dart';
+import 'versind_widgets.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -157,9 +158,12 @@ class _ShellState extends State<Shell> {
             child: AnimatedSwitcher(
               duration: const Duration(milliseconds: 380),
               switchInCurve: Curves.easeOutCubic,
-              transitionBuilder: (child, anim) => FadeTransition(
+                      transitionBuilder: (child, anim) => FadeTransition(
                 opacity: anim,
-                child: SlideTransition(position: Tween<Offset>(begin: const Offset(0, 0.03), end: Offset.zero).animate(anim), child: child),
+                child: SlideTransition(
+                  position: Tween<Offset>(begin: const Offset(0, 0.03), end: Offset.zero).animate(anim),
+                  child: ScaleTransition(scale: Tween<double>(begin: 0.985, end: 1).animate(anim), child: child),
+                ),
               ),
               child: KeyedSubtree(key: ValueKey(_i), child: _body()),
             ),
