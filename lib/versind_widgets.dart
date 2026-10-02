@@ -209,7 +209,7 @@ class _WelcomeBrandState extends State<WelcomeBrand> with SingleTickerProviderSt
   late final AnimationController _c = AnimationController(vsync: this, duration: const Duration(milliseconds: 2600));
   bool _started = false;
 
-  static const String _name = 'Versind';
+  static const String _name = 'VERSIND';
 
   @override
   void didChangeDependencies() {
@@ -246,7 +246,7 @@ class _WelcomeBrandState extends State<WelcomeBrand> with SingleTickerProviderSt
           final logoBlur = 16 * (1 - _iv(t, 0.0, 0.36, Curves.easeOut));
           // halo: blooms to a peak, then settles to a quiet glow
           final glow = t < 0.18 ? 0.0 : (t < 0.46 ? _iv(t, 0.18, 0.46, Curves.easeOut) : 1 - 0.55 * _iv(t, 0.46, 0.92, Curves.easeInOut));
-          final spacing = 3.0 + 9.0 * (1 - _iv(t, 0.26, 0.88, Curves.easeOutCubic));
+          final spacing = 1.0 + 9.0 * (1 - _iv(t, 0.26, 0.88, Curves.easeOutCubic));
           final lineW = 44.0 * _iv(t, 0.62, 0.92);
 
           Widget logo = Image.asset(kLogoAsset, width: 88, height: 88, filterQuality: FilterQuality.high);
@@ -289,7 +289,7 @@ class _WelcomeBrandState extends State<WelcomeBrand> with SingleTickerProviderSt
                         opacity: p,
                         child: Transform.translate(
                           offset: Offset(0, 14 * (1 - p)),
-                          child: Text(_name[i], style: const TextStyle(fontSize: 40, height: 1.1, fontWeight: FontWeight.w300, color: C.text)),
+                          child: Text(_name[i], style: const TextStyle(fontFamily: 'Syncopate', fontSize: 27, height: 1.15, fontWeight: FontWeight.w700, color: C.text)),
                         ),
                       );
                     }(),
@@ -383,156 +383,388 @@ class _MotesPainter extends CustomPainter {
 const _monthNames = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
 const _weekdayLong = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
 
-/// One clean glass panel: month + year on the left, the picked date on the right, then a week
-/// of day "pills" — weekday name on top, a round date bubble below. The selected pill is a single
-/// highlight that slides between days (so two days can never be lit at once).
+const double _kWeekRowH = 64;
+const kShortDays = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+
+/// A week of day "pills" — weekday name on top, a round date bubble below. The selected pill is a
+/// single highlight that slides between days, so two days can never be lit at once.
+/// selectedIndex < 0 means "the picked day is in another week" and shows no highlight.
+class _WeekRow extends StatelessWidget {
+  const _WeekRow({required this.days, required this.selectedIndex, this.onSelect});
+  final List<DateTime> days;
+  final int selectedIndex;
+  final ValueChanged<int>? onSelect;
+
+  @override
+  Widget build(BuildContext context) {
+    final today = dateOnly(DateTime.now());
+    final accent = Accent.color;
+    final n = days.length;
+    return LayoutBuilder(
+      builder: (context, cons) {
+        final cell = cons.maxWidth / n;
+        final pillW = cell - 4;
+        final bubble = math.min(pillW - 8, 28.0);
+        const h = _kWeekRowH;
+        final pillR = BorderRadius.circular(pillW / 2);
+        return SizedBox(
+          height: h,
+          child: Stack(
+            children: [
+              Row(
+                children: List.generate(
+                  n,
+                  (i) => SizedBox(
+                    width: cell,
+                    height: h,
+                    child: Center(
+                      child: Container(
+                        width: pillW,
+                        height: h,
+                        decoration: BoxDecoration(borderRadius: pillR, color: Colors.white.withValues(alpha: 0.05), border: Border.all(color: Colors.white.withValues(alpha: 0.08))),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+              AnimatedPositioned(
+                duration: const Duration(milliseconds: 320),
+                curve: Curves.easeOutCubic,
+                left: cell * (selectedIndex < 0 ? 0 : selectedIndex) + 2,
+                top: 0,
+                width: pillW,
+                height: h,
+                child: AnimatedOpacity(
+                  duration: const Duration(milliseconds: 200),
+                  opacity: selectedIndex < 0 ? 0 : 1,
+                  child: DecoratedBox(
+                    decoration: BoxDecoration(
+                      borderRadius: pillR,
+                      color: accent.withValues(alpha: 0.20),
+                      border: Border.all(color: accent.withValues(alpha: 0.75), width: 1.3),
+                      boxShadow: [BoxShadow(color: accent.withValues(alpha: 0.28), blurRadius: 12, offset: const Offset(0, 3))],
+                    ),
+                  ),
+                ),
+              ),
+              Row(
+                children: List.generate(n, (i) {
+                  final d = days[i];
+                  final on = i == selectedIndex;
+                  final isToday = dateOnly(d) == today;
+                  return SizedBox(
+                    width: cell,
+                    height: h,
+                    child: Semantics(
+                      button: onSelect != null,
+                      selected: on,
+                      label: '${_weekdayLong[d.weekday - 1]} ${d.day} ${_monthNames[d.month - 1]}',
+                      child: GestureDetector(
+                        behavior: HitTestBehavior.opaque,
+                        onTap: onSelect == null
+                            ? null
+                            : () {
+                                HapticFeedback.selectionClick();
+                                onSelect!(i);
+                              },
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            AnimatedDefaultTextStyle(
+                              duration: const Duration(milliseconds: 220),
+                              style: TextStyle(fontSize: 11, fontWeight: on ? FontWeight.w700 : FontWeight.w500, color: on ? C.text : C.mute),
+                              child: Text(kShortDays[d.weekday - 1]),
+                            ),
+                            const SizedBox(height: 5),
+                            AnimatedContainer(
+                              duration: const Duration(milliseconds: 260),
+                              curve: Curves.easeOutCubic,
+                              width: bubble,
+                              height: bubble,
+                              alignment: Alignment.center,
+                              decoration: BoxDecoration(
+                                shape: BoxShape.circle,
+                                color: on ? accent : Colors.white.withValues(alpha: 0.08),
+                                border: Border.all(color: isToday && !on ? accent : Colors.transparent, width: 1.5),
+                              ),
+                              child: AnimatedDefaultTextStyle(
+                                duration: const Duration(milliseconds: 220),
+                                style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: on ? C.base : C.text),
+                                child: Text('${d.day}'),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  );
+                }),
+              ),
+            ],
+          ),
+        );
+      },
+      );
+  }
+}
+
+/// Fixed week panel for Home: month + year, the date, and one week of pills.
 class DatePanel extends StatelessWidget {
   const DatePanel({super.key, required this.days, required this.selectedIndex, this.onSelect});
   final List<DateTime> days;
   final int selectedIndex;
   final ValueChanged<int>? onSelect;
 
-  static const _short = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
-
   @override
   Widget build(BuildContext context) {
     final sel = days[selectedIndex.clamp(0, days.length - 1).toInt()];
     final today = dateOnly(DateTime.now());
-    final accent = Accent.color;
     return Glass(
-      radius: 30,
-      padding: const EdgeInsets.fromLTRB(14, 16, 14, 14),
+      radius: 28,
+      padding: const EdgeInsets.fromLTRB(12, 12, 12, 12),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 4),
             child: Row(
-              crossAxisAlignment: CrossAxisAlignment.center,
               children: [
-                Expanded(
-                  child: Text('${_monthNames[sel.month - 1]} ${sel.year}', maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600, color: C.text)),
-                ),
-                const SizedBox(width: 8),
+                Expanded(child: Text('${_monthNames[sel.month - 1]} ${sel.year}', maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600, color: C.text))),
                 Text(
                   dateOnly(sel) == today ? 'Today' : '${_weekdayLong[sel.weekday - 1].substring(0, 3)}, ${sel.day} ${_monthNames[sel.month - 1].substring(0, 3)}',
-                  style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600, color: accent),
+                  style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600, color: Accent.color),
                 ),
               ],
             ),
           ),
-          const SizedBox(height: 12),
-          LayoutBuilder(
-            builder: (context, cons) {
-              final n = days.length;
-              final cell = cons.maxWidth / n;
-              final pillW = cell - 4;
-              final bubble = math.min(pillW - 6, 34.0);
-              const h = 84.0;
-              final pillR = BorderRadius.circular(pillW / 2);
-              return SizedBox(
-                height: h,
-                child: Stack(
-                  children: [
-                    // resting pills
-                    Row(
-                      children: List.generate(
-                        n,
-                        (i) => SizedBox(
-                          width: cell,
-                          height: h,
-                          child: Center(
-                            child: Container(
-                              width: pillW,
-                              height: h,
-                              decoration: BoxDecoration(
-                                borderRadius: pillR,
-                                color: Colors.white.withValues(alpha: 0.05),
-                                border: Border.all(color: Colors.white.withValues(alpha: 0.08)),
-                              ),
-                            ),
-                          ),
-                        ),
-                      ),
-                    ),
-                    // the one sliding highlight
-                    AnimatedPositioned(
-                      duration: const Duration(milliseconds: 320),
-                      curve: Curves.easeOutCubic,
-                      left: cell * selectedIndex + 2,
-                      top: 0,
-                      width: pillW,
-                      height: h,
-                      child: DecoratedBox(
-                        decoration: BoxDecoration(
-                          borderRadius: pillR,
-                          color: accent.withValues(alpha: 0.20),
-                          border: Border.all(color: accent.withValues(alpha: 0.75), width: 1.3),
-                          boxShadow: [BoxShadow(color: accent.withValues(alpha: 0.28), blurRadius: 14, offset: const Offset(0, 4))],
-                        ),
-                      ),
-                    ),
-                    // labels + date bubbles
-                    Row(
-                      children: List.generate(n, (i) {
-                        final d = days[i];
-                        final on = i == selectedIndex;
-                        final isToday = dateOnly(d) == today;
-                        return SizedBox(
-                          width: cell,
-                          height: h,
-                          child: Semantics(
-                            button: onSelect != null,
-                            selected: on,
-                            label: '${_weekdayLong[d.weekday - 1]} ${d.day} ${_monthNames[d.month - 1]}',
-                            child: GestureDetector(
-                              behavior: HitTestBehavior.opaque,
-                              onTap: onSelect == null
-                                  ? null
-                                  : () {
-                                      HapticFeedback.selectionClick();
-                                      onSelect!(i);
-                                    },
-                              child: Column(
-                                mainAxisAlignment: MainAxisAlignment.center,
-                                children: [
-                                  AnimatedDefaultTextStyle(
-                                    duration: const Duration(milliseconds: 220),
-                                    style: TextStyle(fontSize: 11.5, fontWeight: on ? FontWeight.w700 : FontWeight.w500, color: on ? C.text : C.mute),
-                                    child: Text(_short[d.weekday - 1]),
-                                  ),
-                                  const SizedBox(height: 9),
-                                  AnimatedContainer(
-                                    duration: const Duration(milliseconds: 260),
-                                    curve: Curves.easeOutCubic,
-                                    width: bubble,
-                                    height: bubble,
-                                    alignment: Alignment.center,
-                                    decoration: BoxDecoration(
-                                      shape: BoxShape.circle,
-                                      color: on ? accent : Colors.white.withValues(alpha: 0.08),
-                                      border: Border.all(color: isToday && !on ? accent : Colors.transparent, width: 1.6),
-                                    ),
-                                    child: AnimatedDefaultTextStyle(
-                                      duration: const Duration(milliseconds: 220),
-                                      style: TextStyle(fontSize: 14, fontWeight: FontWeight.w700, color: on ? C.base : C.text),
-                                      child: Text('${d.day}'),
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ),
-                          ),
-                        );
-                      }),
-                    ),
-                  ],
+          const SizedBox(height: 8),
+          _WeekRow(days: days, selectedIndex: selectedIndex, onSelect: onSelect),
+        ],
+      ),
+    );
+  }
+}
+
+/// Planner week panel: swipe sideways (or use the arrows) to move through any week, past or future.
+class PagedDatePanel extends StatefulWidget {
+  const PagedDatePanel({super.key, required this.selected, required this.onSelect});
+  final DateTime selected;
+  final ValueChanged<DateTime> onSelect;
+  @override
+  State<PagedDatePanel> createState() => _PagedDatePanelState();
+}
+
+class _PagedDatePanelState extends State<PagedDatePanel> {
+  static const int _base = 5000;
+  late final DateTime _baseMonday = _mondayOf(DateTime.now());
+  late final PageController _pc = PageController(initialPage: _pageOf(widget.selected));
+  late int _page = _pageOf(widget.selected);
+
+  static DateTime _mondayOf(DateTime d) => DateTime(d.year, d.month, d.day - (d.weekday - 1));
+  int _pageOf(DateTime d) => _base + (_mondayOf(d).difference(_baseMonday).inDays / 7).round();
+
+  List<DateTime> _week(int page) {
+    final m = DateTime(_baseMonday.year, _baseMonday.month, _baseMonday.day + 7 * (page - _base));
+    return List.generate(7, (i) => DateTime(m.year, m.month, m.day + i));
+  }
+
+  @override
+  void didUpdateWidget(PagedDatePanel old) {
+    super.didUpdateWidget(old);
+    if (dateOnly(widget.selected) != dateOnly(old.selected)) {
+      final p = _pageOf(widget.selected);
+      if (p != _page && _pc.hasClients) {
+        _pc.animateToPage(p, duration: const Duration(milliseconds: 380), curve: Curves.easeOutCubic);
+      }
+    }
+  }
+
+  @override
+  void dispose() {
+    _pc.dispose();
+    super.dispose();
+  }
+
+  void _goTo(int page) {
+    HapticFeedback.selectionClick();
+    _pc.animateToPage(page, duration: const Duration(milliseconds: 380), curve: Curves.easeOutCubic);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final mid = _week(_page)[3];
+    final sel = dateOnly(widget.selected);
+    final today = dateOnly(DateTime.now());
+    final accent = Accent.color;
+    return Glass(
+      radius: 28,
+      padding: const EdgeInsets.fromLTRB(8, 8, 8, 12),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              IconButton(tooltip: 'Previous week', visualDensity: VisualDensity.compact, onPressed: () => _goTo(_page - 1), icon: const Icon(Icons.chevron_left_rounded, color: C.mute)),
+              Expanded(
+                child: Text('${_monthNames[mid.month - 1]} ${mid.year}', maxLines: 1, overflow: TextOverflow.ellipsis, textAlign: TextAlign.center, style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600, color: C.text)),
+              ),
+              IconButton(tooltip: 'Next week', visualDensity: VisualDensity.compact, onPressed: () => _goTo(_page + 1), icon: const Icon(Icons.chevron_right_rounded, color: C.mute)),
+              GestureDetector(
+                behavior: HitTestBehavior.opaque,
+                onTap: () {
+                  HapticFeedback.selectionClick();
+                  widget.onSelect(today);
+                  if (_page != _base && _pc.hasClients) _pc.animateToPage(_base, duration: const Duration(milliseconds: 380), curve: Curves.easeOutCubic);
+                },
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(4, 10, 8, 10),
+                  child: Text('Today', style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600, color: sel == today ? C.mute : accent)),
                 ),
-              );
-            },
+              ),
+            ],
+          ),
+          SizedBox(
+            height: _kWeekRowH,
+            child: PageView.builder(
+              controller: _pc,
+              onPageChanged: (p) => setState(() => _page = p),
+              itemBuilder: (context, page) {
+                final days = _week(page);
+                final idx = days.indexWhere((d) => dateOnly(d) == sel);
+                return Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 4),
+                  child: _WeekRow(days: days, selectedIndex: idx, onSelect: (i) => widget.onSelect(days[i])),
+                );
+              },
+            ),
           ),
         ],
       ),
+    );
+  }
+}
+
+// ═════════════════════════ Week capsules (habit streak visual) ═════════════════════════
+
+/// A habit's week: a number over a weekday name for each day. Days completed in a row are joined into
+/// ONE continuous capsule; days not done sit in faint pills; days the habit isn't scheduled stay dim.
+class WeekCapsules extends StatelessWidget {
+  const WeekCapsules({super.key, required this.days, required this.states, required this.color, this.todayIndex, this.showWeekday = true});
+  final List<DateTime?> days; // null = empty cell
+  final List<DotState?> states;
+  final Color color;
+  final int? todayIndex;
+  final bool showWeekday;
+
+  @override
+  Widget build(BuildContext context) {
+    final n = days.length;
+    final rowH = showWeekday ? 56.0 : 38.0;
+    final key = Object.hashAll([...states.map((e) => e?.index ?? -1), color.value]);
+    final reduce = MediaQuery.of(context).disableAnimations;
+    return TweenAnimationBuilder<double>(
+      key: ValueKey(key),
+      tween: Tween(begin: 0, end: 1),
+      duration: reduce ? Duration.zero : const Duration(milliseconds: 520),
+      curve: Curves.easeOutCubic,
+      builder: (context, t, _) => LayoutBuilder(
+        builder: (context, cons) {
+          final cell = cons.maxWidth / n;
+          // runs of consecutive completed days
+          final runs = <List<int>>[];
+          int i = 0;
+          while (i < n) {
+            if (states[i] == DotState.done) {
+              int j = i;
+              while (j + 1 < n && states[j + 1] == DotState.done) {
+                j++;
+              }
+              runs.add([i, j]);
+              i = j + 1;
+            } else {
+              i++;
+            }
+          }
+          final r = BorderRadius.circular(rowH / 2);
+          return SizedBox(
+            height: rowH,
+            child: Stack(
+              children: [
+                for (int k = 0; k < n; k++)
+                  if (states[k] == DotState.miss || (todayIndex == k && states[k] != DotState.done))
+                    Positioned(
+                      left: cell * k + 2,
+                      width: cell - 4,
+                      top: 0,
+                      height: rowH,
+                      child: DecoratedBox(
+                        decoration: BoxDecoration(
+                          borderRadius: r,
+                          color: Colors.white.withValues(alpha: states[k] == DotState.miss ? 0.07 : 0.04),
+                          border: todayIndex == k ? Border.all(color: Accent.color, width: 1.4) : null,
+                        ),
+                      ),
+                    ),
+                for (final run in runs)
+                  Positioned(
+                    left: cell * run[0] + 2,
+                    width: (cell - 4) + (cell * (run[1] - run[0])) * t,
+                    top: 0,
+                    height: rowH,
+                    child: DecoratedBox(
+                      decoration: BoxDecoration(
+                        borderRadius: r,
+                        color: color,
+                        boxShadow: [BoxShadow(color: color.withValues(alpha: 0.35), blurRadius: 12, offset: const Offset(0, 3))],
+                      ),
+                    ),
+                  ),
+                Row(
+                  children: List.generate(n, (k) {
+                    final d = days[k];
+                    final st = states[k];
+                    if (d == null || st == null) return SizedBox(width: cell, height: rowH);
+                    final done = st == DotState.done;
+                    final off = st == DotState.off;
+                    return SizedBox(
+                      width: cell,
+                      height: rowH,
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Text('${d.day}', style: TextStyle(fontSize: showWeekday ? 15 : 13.5, fontWeight: FontWeight.w700, color: done ? C.base : (off ? C.mute.withValues(alpha: 0.55) : C.text))),
+                          if (showWeekday) ...[
+                            const SizedBox(height: 2),
+                            Text(kShortDays[d.weekday - 1].toUpperCase(), style: TextStyle(fontSize: 10, fontWeight: FontWeight.w600, letterSpacing: 0.4, color: done ? C.base.withValues(alpha: 0.75) : C.mute.withValues(alpha: off ? 0.5 : 1))),
+                          ],
+                        ],
+                      ),
+                    );
+                  }),
+                ),
+              ],
+            ),
+          );
+        },
+      ),
+    );
+  }
+}
+
+/// Number that counts up to its value, and re-counts whenever the value changes.
+class CountUp extends StatelessWidget {
+  const CountUp({super.key, required this.value, required this.style, this.suffix = ''});
+  final int value;
+  final TextStyle style;
+  final String suffix;
+  @override
+  Widget build(BuildContext context) {
+    if (MediaQuery.of(context).disableAnimations) return Text('$value$suffix', style: style, maxLines: 1);
+    return TweenAnimationBuilder<double>(
+      tween: Tween(begin: 0, end: value.toDouble()),
+      duration: const Duration(milliseconds: 750),
+      curve: Curves.easeOutCubic,
+      builder: (_, v, __) => Text('${v.round()}$suffix', style: style, maxLines: 1),
     );
   }
 }
