@@ -5,12 +5,12 @@ import 'package:image_picker/image_picker.dart';
 import 'package:path_provider/path_provider.dart';
 import 'core.dart';
 import 'data.dart';
-import 'habits_page.dart';
 import 'versind_widgets.dart';
 
 class HomePage extends StatefulWidget {
-  const HomePage({super.key, required this.store});
+  const HomePage({super.key, required this.store, this.onOpenHabits});
   final AppStore store;
+  final VoidCallback? onOpenHabits;
   @override
   State<HomePage> createState() => _HomePageState();
 }
@@ -40,7 +40,7 @@ class _HomePageState extends State<HomePage> {
         final db = store.successOn(b, now) ? 1 : 0;
         return da.compareTo(db);
       });
-    final shown = dueToday.take(3).toList();
+    final pending = dueToday.where((hb) => !store.successOn(hb, now)).toList();
 
     final week = List.generate(7, (i) => now.subtract(Duration(days: now.weekday - 1 - i)));
     final todayIndex = now.weekday - 1;
@@ -163,30 +163,9 @@ class _HomePageState extends State<HomePage> {
             ),
           ),
         ],
-        if (shown.isNotEmpty) ...[
-          const SizedBox(height: 22),
-          const Reveal(delayMs: 500, child: SectionLabel("TODAY'S HABITS")),
-          // the same tile the Habits tab uses — one component, one behaviour
-          ...List.generate(shown.length, (i) {
-            final hb = shown[i];
-            return Padding(
-              padding: const EdgeInsets.only(bottom: 14),
-              child: Reveal(
-                delayMs: 560 + i * 70,
-                child: HabitCard(
-                  key: ValueKey('home-${hb.id}'),
-                  store: store,
-                  habit: hb,
-                  onOpen: () => openHabit(context, store, hb.id),
-                ),
-              ),
-            );
-          }),
-          if (dueToday.length > shown.length)
-            Padding(
-              padding: const EdgeInsets.only(left: 4, bottom: 4),
-              child: Text('+${dueToday.length - shown.length} more in Habits', style: const TextStyle(fontSize: 12.5, color: C.mute)),
-            ),
+        if (dueToday.isNotEmpty) ...[
+          const SizedBox(height: 16),
+          Reveal(delayMs: 500, child: _PendingHabits(pending: pending, total: dueToday.length, onTap: widget.onOpenHabits)),
         ],
         const SizedBox(height: 8),
         Reveal(
@@ -267,6 +246,82 @@ class _ProfileAvatarState extends State<ProfileAvatar> {
               : (initials.isEmpty
                   ? const Icon(Icons.person_rounded, color: C.mute, size: 24)
                   : Text(initials, style: const TextStyle(fontSize: 19, fontWeight: FontWeight.w700, color: C.text))),
+        ),
+      ),
+    );
+  }
+}
+
+/// A short reminder, not the habit blocks themselves: how many habits are still open today.
+class _PendingHabits extends StatelessWidget {
+  const _PendingHabits({required this.pending, required this.total, this.onTap});
+  final List<Habit> pending;
+  final int total;
+  final VoidCallback? onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final allDone = pending.isEmpty;
+    final names = pending.take(3).map((e) => e.name).join(' · ');
+    final extra = pending.length > 3 ? '  +${pending.length - 3}' : '';
+    return Semantics(
+      button: onTap != null,
+      label: allDone ? 'All habits done today' : '${pending.length} habits pending today',
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: onTap == null
+            ? null
+            : () {
+                HapticFeedback.selectionClick();
+                onTap!();
+              },
+        child: Glass(
+          radius: 24,
+          padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 16),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.center,
+            children: [
+              if (allDone)
+                const Icon(Icons.check_circle_rounded, color: C.lime, size: 30)
+              else
+                SizedBox(
+                  width: 30.0 + (pending.take(3).length - 1) * 18,
+                  height: 34,
+                  child: Stack(
+                    children: [
+                      for (int i = pending.take(3).length - 1; i >= 0; i--)
+                        Positioned(
+                          left: i * 18.0,
+                          child: Container(
+                            width: 34,
+                            height: 34,
+                            decoration: BoxDecoration(color: Color.alphaBlend(pending[i].color.withValues(alpha: 0.28), const Color(0xFF111116)), shape: BoxShape.circle, border: Border.all(color: const Color(0xFF111116), width: 2)),
+                            child: Icon(pending[i].icon, color: pending[i].color, size: 17),
+                          ),
+                        ),
+                    ],
+                  ),
+                ),
+              const SizedBox(width: 14),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    allDone
+                        ? const Text('All habits done today', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600, color: C.text))
+                        : Row(children: [
+                            CountUp(value: pending.length, style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w700, color: C.lime)),
+                            Text(pending.length == 1 ? ' habit still to do' : ' habits still to do', style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600, color: C.text)),
+                          ]),
+                    const SizedBox(height: 3),
+                    Text(allDone ? 'Nice work — see you tomorrow.' : '$names$extra', maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 12.5, color: C.mute)),
+                  ],
+                ),
+              ),
+              if (onTap != null) const Icon(Icons.chevron_right_rounded, color: C.mute),
+            ],
+          ),
         ),
       ),
     );
