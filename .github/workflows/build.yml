@@ -34,6 +34,7 @@ jobs:
             curl -fsSL "https://github.com/google/fonts/raw/main/ofl/poppins/Poppins-$w.ttf" -o "assets/fonts/Poppins-$w.ttf"
           done
           curl -fsSL "https://github.com/google/fonts/raw/main/ofl/greatvibes/GreatVibes-Regular.ttf" -o "assets/fonts/GreatVibes-Regular.ttf"
+          curl -fsSL "https://github.com/google/fonts/raw/main/apache/syncopate/Syncopate-Bold.ttf" -o "assets/fonts/Syncopate-Bold.ttf"
 
       - name: Create Android project files
         run: |
