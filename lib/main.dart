@@ -35,7 +35,7 @@ class DaybookApp extends StatelessWidget {
   Widget build(BuildContext context) {
     return MaterialApp(
       debugShowCheckedModeBanner: false,
-      title: 'Daybook',
+      title: 'Versind',
       scrollBehavior: NoGlowScrollBehavior(),
       theme: ThemeData(
         useMaterial3: true,
@@ -78,7 +78,7 @@ class _RootState extends State<Root> {
       body: Stack(
         fit: StackFit.expand,
         children: [
-          const AuroraBackground(),
+          AppBackground(settings: store.settings),
           AnimatedSwitcher(
             duration: const Duration(milliseconds: 800),
             switchInCurve: Curves.easeOutCubic,
@@ -158,7 +158,7 @@ class _ShellState extends State<Shell> {
             child: AnimatedSwitcher(
               duration: const Duration(milliseconds: 380),
               switchInCurve: Curves.easeOutCubic,
-                      transitionBuilder: (child, anim) => FadeTransition(
+              transitionBuilder: (child, anim) => FadeTransition(
                 opacity: anim,
                 child: SlideTransition(
                   position: Tween<Offset>(begin: const Offset(0, 0.03), end: Offset.zero).animate(anim),
