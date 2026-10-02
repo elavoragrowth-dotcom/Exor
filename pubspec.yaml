@@ -33,6 +33,10 @@ flutter:
           weight: 600
         - asset: assets/fonts/Poppins-Bold.ttf
           weight: 700
+    - family: Syncopate
+      fonts:
+        - asset: assets/fonts/Syncopate-Bold.ttf
+          weight: 700
     - family: GreatVibes
       fonts:
         - asset: assets/fonts/GreatVibes-Regular.ttf
