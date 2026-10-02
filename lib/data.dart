@@ -35,6 +35,7 @@ class Habit {
     this.description = '',
     List<ChecklistItem>? checklist,
     this.coverImagePath,
+    this.coverBlur = 0,
     List<int>? reminders,
     this.focusEnabled = true,
     this.notifBase = 0,
@@ -61,6 +62,7 @@ class Habit {
   String description;
   List<ChecklistItem> checklist;
   String? coverImagePath; // per-habit cover image (never a global background)
+  double coverBlur; // 0..16 blur applied to that cover only
   List<int> reminders; // minutes since midnight
   bool focusEnabled;
   int notifBase; // owns notification ids notifBase*200 .. +199
@@ -90,6 +92,7 @@ class Habit {
         'description': description,
         'checklist': checklist.map((e) => e.toJson()).toList(),
         'coverImagePath': coverImagePath,
+        'coverBlur': coverBlur,
         'reminders': reminders,
         'focusEnabled': focusEnabled,
         'notifBase': notifBase,
@@ -114,6 +117,7 @@ class Habit {
         description: j['description'] ?? '',
         checklist: (j['checklist'] as List?)?.map((e) => ChecklistItem.fromJson(Map<String, dynamic>.from(e as Map))).toList(),
         coverImagePath: j['coverImagePath'],
+        coverBlur: (j['coverBlur'] ?? 0).toDouble(),
         reminders: (j['reminders'] as List?)?.map((e) => (e as num).toInt()).toList(),
         focusEnabled: j['focusEnabled'] ?? true,
         notifBase: j['notifBase'] ?? 0,
@@ -204,6 +208,10 @@ class AppSettings {
     this.accentValue = 0xFFD4F25C,
     this.glassStyleIndex = 0,
     this.profilePicturePath,
+    this.bgMode = 1,
+    this.bgImagePath,
+    this.bgBlurOn = false,
+    this.bgBlur = 12,
   });
   String name;
   int dayStartHour, dayEndHour, slotMinutes, reminderLeadMinutes, auroraLevel, glassStyleIndex;
@@ -211,6 +219,11 @@ class AppSettings {
   double glassBlur;
   int accentValue;
   String? profilePicturePath;
+  // App-wide background (NOT the per-habit cover): 0 = AMOLED black, 1 = Aurora (default), 2 = custom image
+  int bgMode;
+  String? bgImagePath;
+  bool bgBlurOn;
+  double bgBlur;
 
   Color get accent => Color(accentValue);
 
@@ -228,6 +241,10 @@ class AppSettings {
         'accentValue': accentValue,
         'glassStyleIndex': glassStyleIndex,
         'profilePicturePath': profilePicturePath,
+        'bgMode': bgMode,
+        'bgImagePath': bgImagePath,
+        'bgBlurOn': bgBlurOn,
+        'bgBlur': bgBlur,
       };
 
   factory AppSettings.fromJson(Map<String, dynamic> j) => AppSettings(
@@ -244,6 +261,10 @@ class AppSettings {
         accentValue: j['accentValue'] ?? 0xFFD4F25C,
         glassStyleIndex: j['glassStyleIndex'] ?? 0,
         profilePicturePath: j['profilePicturePath'],
+        bgMode: j['bgMode'] ?? 1,
+        bgImagePath: j['bgImagePath'],
+        bgBlurOn: j['bgBlurOn'] ?? false,
+        bgBlur: (j['bgBlur'] ?? 12).toDouble(),
       );
 }
 
@@ -575,30 +596,45 @@ class AppStore extends ChangeNotifier {
     return count;
   }
 
-  /// Share of due days in the last [days] days that succeeded (0..1).
+  /// Share of due days in the [days] days ending on [end] that succeeded (0..1).
   /// Today only counts once it is a success, so an unfinished day never reads as a miss.
-  double consistency(Habit h, {int days = 30}) {
+  double consistencyAt(Habit h, DateTime end, {int days = 30}) {
     final today = dateOnly(DateTime.now());
+    final last = dateOnly(end);
     final start = dateOnly(h.createdAt);
     int due = 0, ok = 0;
     for (int i = 0; i < days; i++) {
-      final d = today.subtract(Duration(days: i));
+      final d = last.subtract(Duration(days: i));
       if (d.isBefore(start)) break;
       if (!isDue(h, d)) continue;
       final success = successOn(h, d);
-      if (i == 0 && !success) continue;
+      if (d == today && !success) continue;
       due++;
       if (success) ok++;
     }
     if (due == 0) return 0;
     if (h.repeatType == 'timesPerWeek') {
       // "N per week" habits are due every day in the streak maths, so measure against the weekly target.
-      final span = today.difference(start).inDays + 1;
+      final span = last.difference(start).inDays + 1;
       final window = span < days ? span : days;
       final target = window * h.timesPerWeek / 7;
       return target <= 0 ? 0 : (ok / target).clamp(0.0, 1.0).toDouble();
     }
     return ok / due;
+  }
+
+  double consistency(Habit h, {int days = 30}) => consistencyAt(h, DateTime.now(), days: days);
+
+  /// Rolling 7-day consistency for each of the last [n] days (oldest first) — feeds the wavy line.
+  List<double> momentum(Habit h, {int n = 14}) {
+    final today = dateOnly(DateTime.now());
+    return List.generate(n, (i) => consistencyAt(h, today.subtract(Duration(days: n - 1 - i)), days: 7));
+  }
+
+  List<double> overallMomentum({int n = 14}) {
+    if (habits.isEmpty) return List.filled(n, 0.0);
+    final all = habits.map((h) => momentum(h, n: n)).toList();
+    return List.generate(n, (i) => all.map((m) => m[i]).reduce((a, b) => a + b) / all.length);
   }
 
   double overallConsistency({int days = 30}) {
