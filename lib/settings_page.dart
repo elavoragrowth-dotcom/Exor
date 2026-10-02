@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'core.dart';
 import 'data.dart';
+import 'versind_widgets.dart';
 
 class SettingsPage extends StatefulWidget {
   const SettingsPage({super.key, required this.store, required this.onReset});
@@ -34,6 +35,55 @@ class _SettingsPageState extends State<SettingsPage> {
         ],
       );
 
+  /// All six accent swatches on ONE row, sized to the space available, so none (Blue was the one
+  /// getting cut off) can ever run past the card edge. Each swatch has a full-height tap area.
+  Widget _accentRow(AppStore store, AppSettings s) {
+    return LayoutBuilder(
+      builder: (context, cons) {
+        const gap = 10.0;
+        final n = Accent.presets.length;
+        final d = ((cons.maxWidth - gap * (n - 1)) / n).clamp(28.0, 44.0).toDouble();
+        return Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: List.generate(n, (i) {
+            final c = Accent.presets[i];
+            final on = c.value == s.accentValue;
+            return Semantics(
+              button: true,
+              selected: on,
+              label: '${Accent.names[i]} accent',
+              child: GestureDetector(
+                behavior: HitTestBehavior.opaque,
+                onTap: () {
+                  HapticFeedback.selectionClick();
+                  store.updateSettings((x) => x.accentValue = c.value);
+                },
+                child: SizedBox(
+                  width: d,
+                  height: 48,
+                  child: Center(
+                    child: AnimatedContainer(
+                      duration: const Duration(milliseconds: 220),
+                      width: d,
+                      height: d,
+                      decoration: BoxDecoration(
+                        color: c,
+                        shape: BoxShape.circle,
+                        border: Border.all(color: on ? Colors.white : Colors.transparent, width: 3),
+                        boxShadow: on ? [BoxShadow(color: c.withValues(alpha: 0.5), blurRadius: 14)] : [],
+                      ),
+                      child: on ? Icon(Icons.check_rounded, color: C.base, size: d * 0.45) : null,
+                    ),
+                  ),
+                ),
+              ),
+            );
+          }),
+        );
+      },
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final store = widget.store;
@@ -62,6 +112,7 @@ class _SettingsPageState extends State<SettingsPage> {
                   ),
                 ),
                 IconButton(
+                  tooltip: 'Save name',
                   onPressed: () {
                     FocusManager.instance.primaryFocus?.unfocus();
                     store.updateSettings((x) => x.name = _name.text.trim().isEmpty ? x.name : _name.text.trim());
@@ -81,34 +132,8 @@ class _SettingsPageState extends State<SettingsPage> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 const Text('Colours your buttons, rings and highlights everywhere.', style: TextStyle(fontSize: 12.5, color: C.mute)),
-                const SizedBox(height: 14),
-                Row(
-                  children: List.generate(Accent.presets.length, (i) {
-                    final c = Accent.presets[i];
-                    final on = c.value == s.accentValue;
-                    return Padding(
-                      padding: const EdgeInsets.only(right: 12),
-                      child: GestureDetector(
-                        onTap: () {
-                          HapticFeedback.selectionClick();
-                          store.updateSettings((x) => x.accentValue = c.value);
-                        },
-                        child: AnimatedContainer(
-                          duration: const Duration(milliseconds: 220),
-                          width: 40,
-                          height: 40,
-                          decoration: BoxDecoration(
-                            color: c,
-                            shape: BoxShape.circle,
-                            border: Border.all(color: on ? Colors.white : Colors.transparent, width: 3),
-                            boxShadow: on ? [BoxShadow(color: c.withValues(alpha: 0.5), blurRadius: 14)] : [],
-                          ),
-                          child: on ? const Icon(Icons.check_rounded, color: C.base, size: 18) : null,
-                        ),
-                      ),
-                    );
-                  }),
-                ),
+                const SizedBox(height: 10),
+                _accentRow(store, s),
               ],
             ),
           ),
@@ -162,7 +187,7 @@ class _SettingsPageState extends State<SettingsPage> {
         ),
         const Padding(
           padding: EdgeInsets.only(top: 8),
-          child:Text('Habit reminders follow this switch. Set reminder times inside each habit.', style: TextStyle(fontSize: 11.5, color: C.mute)),
+          child: Text('Habit reminders follow this switch. Set reminder times inside each habit.', style: TextStyle(fontSize: 11.5, color: C.mute)),
         ),
         const SizedBox(height: 20),
         const SectionLabel('HABITS'),
@@ -170,6 +195,9 @@ class _SettingsPageState extends State<SettingsPage> {
           delayMs: 420,
           child: Glass(child: _row('Haptics', Switch(value: s.hapticsEnabled, activeColor: C.lime, onChanged: (v) => store.updateSettings((x) => x.hapticsEnabled = v)))),
         ),
+        const SizedBox(height: 20),
+        const SectionLabel('BACKGROUND'),
+        Reveal(delayMs: 440, child: BackgroundSettingsCard(store: store)),
         const SizedBox(height: 20),
         const SectionLabel('APPEARANCE'),
         Reveal(
@@ -249,9 +277,9 @@ class _SettingsPageState extends State<SettingsPage> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: const [
-                Text('Daybook · v1.0.6 (Fix Pass)', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600, color: C.text)),
+                Text('Versind · v1.0.8', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600, color: C.text)),
                 SizedBox(height: 6),
-                Text('Fixed glass borders, one-glow date strips, a Frosted/Liquid Clear toggle, and habit types.', style: TextStyle(fontSize: 12.5, color: C.mute, height: 1.4)),
+                Text('Motion update: a cinematic welcome, your choice of background, connected habit streaks and a wavy consistency line.', style: TextStyle(fontSize: 12.5, color: C.mute, height: 1.4)),
               ],
             ),
           ),
