@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:io';
 import 'dart:math' as math;
+import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:image_picker/image_picker.dart';
@@ -9,6 +10,7 @@ import 'core.dart';
 import 'data.dart';
 import 'habit_widgets.dart';
 import 'notifications.dart';
+import 'versind_widgets.dart';
 
 Route _route(Widget page) => PageRouteBuilder(
       transitionDuration: const Duration(milliseconds: 380),
@@ -17,10 +19,14 @@ Route _route(Widget page) => PageRouteBuilder(
         opacity: a,
         child: SlideTransition(
           position: Tween<Offset>(begin: const Offset(0, 0.06), end: Offset.zero).animate(CurvedAnimation(parent: a, curve: Curves.easeOutCubic)),
-          child: child,
+          child: ScaleTransition(scale: Tween<double>(begin: 0.97, end: 1).animate(CurvedAnimation(parent: a, curve: Curves.easeOutCubic)), child: child),
         ),
       ),
     );
+
+/// Opens a habit's detail page (used by Habits and Home so both behave the same).
+void openHabit(BuildContext context, AppStore store, String habitId) =>
+    Navigator.of(context).push(_route(HabitDetailPage(store: store, habitId: habitId)));
 
 /// The habit's own cover image, or null if it has none (or the file is gone).
 File? coverFileOf(Habit h) {
@@ -30,13 +36,20 @@ File? coverFileOf(Habit h) {
   return f.existsSync() ? f : null;
 }
 
-Widget _coverImage(File f, {double? height}) => SizedBox(
+Widget _coverImage(File f, {double? height, double blur = 0}) => SizedBox(
       width: double.infinity,
       height: height,
       child: Stack(
         fit: StackFit.expand,
         children: [
-          Image.file(f, fit: BoxFit.cover, cacheWidth: 900, errorBuilder: (_, __, ___) => const SizedBox.shrink()),
+          blur > 0.5
+              ? ClipRect(
+                  child: ImageFiltered(
+                    imageFilter: ui.ImageFilter.blur(sigmaX: blur, sigmaY: blur, tileMode: ui.TileMode.mirror),
+                    child: Image.file(f, fit: BoxFit.cover, cacheWidth: 900, errorBuilder: (_, __, ___) => const SizedBox.shrink()),
+                  ),
+                )
+              : Image.file(f, fit: BoxFit.cover, cacheWidth: 900, errorBuilder: (_, __, ___) => const SizedBox.shrink()),
           DecoratedBox(
             decoration: BoxDecoration(
               gradient: LinearGradient(
@@ -116,13 +129,20 @@ class _HabitsPageState extends State<HabitsPage> {
                     const SizedBox(height: 18),
                     Row(
                       children: [
-                        const Kicker('CONSISTENCY · 30 DAYS', color: C.teal),
+                        const Kicker('CONSISTENCY · LAST 14 DAYS', color: C.teal),
                         const Spacer(),
                         Text('${(consistency * 100).round()}%', style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: C.teal)),
                       ],
                     ),
-                    const SizedBox(height: 10),
-                    ConsistencyLine(value: consistency, color: C.teal),
+                    const SizedBox(height: 6),
+                    WavyConsistency(values: store.overallMomentum(), color: C.teal),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: const [
+                        Text('14 days ago', style: TextStyle(fontSize: 11, color: C.mute)),
+                        Text('Today', style: TextStyle(fontSize: 11, color: C.mute)),
+                      ],
+                    ),
                   ],
                 ),
               ),
@@ -235,6 +255,15 @@ class HabitCard extends StatefulWidget {
 
 class _HabitCardState extends State<HabitCard> {
   final GlobalKey _actionKey = GlobalKey();
+  bool _pop = false;
+  bool _down = false;
+
+  void _popControl() {
+    setState(() => _pop = true);
+    Future.delayed(const Duration(milliseconds: 140), () {
+      if (mounted) setState(() => _pop = false);
+    });
+  }
 
   Future<void> _afterToggle(bool wasAllDoneBefore) async {
     if (!wasAllDoneBefore && widget.store.allDueDoneToday() && mounted) {
@@ -249,7 +278,10 @@ class _HabitCardState extends State<HabitCard> {
     final wasAll = store.allDueDoneToday();
     final becomingDone = !store.isDoneOn(h, now);
     HapticFeedback.mediumImpact();
-    if (becomingDone) fireCompletionBurst(context, _actionKey, h.color);
+    if (becomingDone) {
+      fireCompletionBurst(context, _actionKey, h.color);
+      _popControl();
+    }
     await store.toggleHabit(h, now);
     _afterToggle(wasAll);
   }
@@ -274,6 +306,7 @@ class _HabitCardState extends State<HabitCard> {
     await store.setAmount(h, now, next);
     if (!wasGoalReached && next >= h.amountGoal) {
       fireCompletionBurst(context, _actionKey, h.color);
+      _popControl();
       HapticFeedback.mediumImpact();
     }
     _afterToggle(wasAll);
@@ -289,7 +322,7 @@ class _HabitCardState extends State<HabitCard> {
           child: Container(
             constraints: const BoxConstraints(minWidth: 44, minHeight: 44),
             alignment: Alignment.center,
-            child: KeyedSubtree(key: _actionKey, child: child),
+            child: AnimatedScale(scale: _pop ? 1.22 : 1.0, duration: const Duration(milliseconds: 140), curve: Curves.easeOut, child: KeyedSubtree(key: _actionKey, child: child)),
           ),
         ),
       );
@@ -392,13 +425,20 @@ class _HabitCardState extends State<HabitCard> {
 
     return GestureDetector(
       onTap: widget.onOpen,
-      child: Glass(
+      onTapDown: (_) => setState(() => _down = true),
+      onTapCancel: () => setState(() => _down = false),
+      onTapUp: (_) => setState(() => _down = false),
+      child: AnimatedScale(
+        scale: _down ? 0.985 : 1.0,
+        duration: const Duration(milliseconds: 140),
+        curve: Curves.easeOut,
+        child: Glass(
         radius: 24,
         padding: EdgeInsets.zero,
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            if (cover != null) _coverImage(cover, height: 92),
+            if (cover != null) _coverImage(cover, height: 92, blur: h.coverBlur),
             Padding(
               padding: const EdgeInsets.all(20),
               child: Column(
@@ -444,38 +484,29 @@ class _HabitCardState extends State<HabitCard> {
                   ),
                   const SizedBox(height: 14),
                   Row(
-                    children: week.map((d) {
-                      final due = store.isDue(h, d);
-                      final ok = store.successOn(h, d);
-                      final today = dayKey(d) == dayKey(now);
-                      return Expanded(
-                        child: Column(
-                          children: [
-                            Text(weekdayShort(d.weekday).substring(0, 1), style: TextStyle(fontSize: 11, color: today ? C.lime : C.mute)),
-                            const SizedBox(height: 5),
-                            Container(
-                              width: 8,
-                              height: 8,
-                              decoration: BoxDecoration(
-                                shape: BoxShape.circle,
-                                color: !due ? Colors.white.withValues(alpha: 0.08) : (ok ? h.color : Colors.white.withValues(alpha: 0.18)),
-                              ),
-                            ),
-                          ],
-                        ),
-                      );
-                    }).toList(),
+                    children: week
+                        .map((d) => Expanded(
+                          child: Center(child: Text(weekdayShort(d.weekday).substring(0, 1), style: TextStyle(fontSize: 11, color: dayKey(d) == dayKey(now) ? C.lime : C.mute))),
+                            ))
+                        .toList(),
+                  ),
+                  const SizedBox(height: 4),
+                  ConnectedDots(
+                    color: h.color,
+                    radius: 6,
+                    todayIndex: now.weekday - 1,
+                    states: week.map<DotState?>((d) => !store.isDue(h, d) ? DotState.off : (store.successOn(h, d) ? DotState.done : DotState.miss)).toList(),
                   ),
                 ],
               ),
             ),
           ],
         ),
+        ),
       ),
     );
   }
 }
-
 class HabitDetailPage extends StatefulWidget {
   const HabitDetailPage({super.key, required this.store, required this.habitId});
   final AppStore store;
@@ -558,7 +589,7 @@ class _HabitDetailPageState extends State<HabitDetailPage> {
       backgroundColor: Colors.transparent,
       body: Stack(
         children: [
-          const Positioned.fill(child: AuroraBackground()),
+          Positioned.fill(child: AppBackground(settings: widget.store.settings)),
           SafeArea(
             child: ListView(
               padding: const EdgeInsets.fromLTRB(20, 12, 20, 60),
@@ -601,7 +632,7 @@ class _HabitDetailPageState extends State<HabitDetailPage> {
                 ),
                 if (cover != null) ...[
                   const SizedBox(height: 4),
-                  ClipRRect(borderRadius: BorderRadius.circular(28), child: _coverImage(cover, height: 168)),
+                  ClipRRect(borderRadius: BorderRadius.circular(28), child: _coverImage(cover, height: 168, blur: h.coverBlur)),
                 ],
                 const SizedBox(height: 14),
                 Row(
@@ -684,7 +715,7 @@ class _HabitDetailPageState extends State<HabitDetailPage> {
                     ),
                   ),
                 ],
-                    if (h.focusEnabled) ...[
+                if (h.focusEnabled) ...[
                   const SizedBox(height: 20),
                   Glass(
                     child: Row(
@@ -755,19 +786,26 @@ class _HabitDetailPageState extends State<HabitDetailPage> {
                 const SizedBox(height: 20),
                 Glass(
                   radius: 24,
-                  padding: const EdgeInsets.all(18),
+                  padding: const EdgeInsets.fromLTRB(18, 18, 18, 12),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Row(
                         children: [
-                          const Kicker('CONSISTENCY · 30 DAYS', color: C.teal),
+                          const Kicker('CONSISTENCY · LAST 14 DAYS', color: C.teal),
                           const Spacer(),
                           Text('${(consistency * 100).round()}%', style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: C.teal)),
                         ],
                       ),
-                      const SizedBox(height: 12),
-                      ConsistencyLine(value: consistency, color: h.color),
+                      const SizedBox(height: 6),
+                      WavyConsistency(values: store.momentum(h), color: h.color),
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: const [
+                          Text('14 days ago', style: TextStyle(fontSize: 11, color: C.mute)),
+                          Text('Today', style: TextStyle(fontSize: 11, color: C.mute)),
+                        ],
+                      ),
                     ],
                   ),
                 ),
@@ -812,7 +850,7 @@ class _HabitDetailPageState extends State<HabitDetailPage> {
       ),
     );
   }
-
+      
   String _repeatLabel(Habit h) {
     switch (h.repeatType) {
       case 'weekdays':
@@ -829,68 +867,75 @@ class _HabitDetailPageState extends State<HabitDetailPage> {
   Widget _streakTile(String value, String suffix, String label, IconData icon, Color color) => Expanded(
         child: Glass(
           radius: 20,
-          padding: const EdgeInsets.symmetric(vertical: 16),
-          child: Column(
-            children: [
-              Icon(icon, color: color, size: 20),
-              const SizedBox(height: 8),
-              Text('$value${suffix.isNotEmpty ? ' $suffix' : ''}', textAlign: TextAlign.center, style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w700, color: C.text)),
-              const SizedBox(height: 2),
-              Text(label, textAlign: TextAlign.center, style: const TextStyle(fontSize: 11, color: C.mute)),
-            ],
+          padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 6),
+          // Glass hands its child loose constraints, so a bare Column shrinks to its widest line and sits
+          // at the left edge. Forcing full width lets every line centre in the tile.
+          child: SizedBox(
+            width: double.infinity,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.center,
+              children: [
+                Icon(icon, color: color, size: 22),
+                const SizedBox(height: 8),
+                FittedBox(
+                  fit: BoxFit.scaleDown,
+                  child: Text('$value${suffix.isNotEmpty ? ' $suffix' : ''}', textAlign: TextAlign.center, maxLines: 1, style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w700, color: C.text)),
+                ),
+                const SizedBox(height: 2),
+                Text(label, textAlign: TextAlign.center, style: const TextStyle(fontSize: 12, color: C.mute)),
+              ],
+            ),
           ),
         ),
       );
 
   Widget _activityView(AppStore store, Habit h, DateTime now) {
+    DotState st(DateTime d) => !store.isDue(h, d) ? DotState.off : (store.successOn(h, d) ? DotState.done : DotState.miss);
     if (_range == 'Week') {
       final start = now.subtract(Duration(days: now.weekday - 1));
       final days = List.generate(7, (i) => start.add(Duration(days: i)));
-      return Row(
-        children: days.map((d) {
-          final ok = store.successOn(h, d);
-          final due = store.isDue(h, d);
-          final today = dayKey(d) == dayKey(now);
-          return Expanded(
-            child: Column(
-              children: [
-                Text('${d.day}', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: today ? C.lime : C.text)),
-                Text(weekdayShort(d.weekday), style: const TextStyle(fontSize: 11, color: C.mute)),
-                const SizedBox(height: 8),
-                Container(
-                  width: 30,
-                  height: 30,
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    color: !due ? Colors.white.withValues(alpha: 0.05) : (ok ? h.color : Colors.white.withValues(alpha: 0.10)),
-                    border: today ? Border.all(color: C.lime, width: 1.4) : null,
-                  ),
-                  child: ok ? const Icon(Icons.check_rounded, size: 16, color: C.base) : null,
-                ),
-              ],
-            ),
-          );
-        }).toList(),
+      return Column(
+        children: [
+          Row(
+            children: days
+                .map((d) => Expanded(
+                      child: Center(child: Text(weekdayShort(d.weekday), style: TextStyle(fontSize: 11, color: dayKey(d) == dayKey(now) ? C.lime : C.mute))),
+                    ))
+                .toList(),
+          ),
+          const SizedBox(height: 8),
+          ConnectedDots(color: h.color, radius: 13, todayIndex: now.weekday - 1, states: days.map<DotState?>(st).toList()),
+          const SizedBox(height: 8),
+          Row(
+            children: days.map((d) => Expanded(child: Center(child: Text('${d.day}', style: const TextStyle(fontSize: 11, color: C.mute))))).toList(),
+          ),
+        ],
       );
     } else if (_range == 'Month') {
-      final start = DateTime(now.year, now.month, 1);
-      final days = List.generate(DateTime(now.year, now.month + 1, 0).day, (i) => start.add(Duration(days: i)));
-      return Wrap(
-        spacing: 7,
-        runSpacing: 7,
-        children: days.map((d) {
-          final ok = store.successOn(h, d);
-          final due = store.isDue(h, d);
-          return Container(
-            width: 22,
-            height: 22,
-            decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(6),
-              color: !due ? Colors.white.withValues(alpha: 0.05) : (ok ? h.color : Colors.white.withValues(alpha: 0.10)),
-            ),
-          );
-        }).toList(),
-      );
+      final first = DateTime(now.year, now.month, 1);
+      final count = DateTime(now.year, now.month + 1, 0).day;
+      final lead = first.weekday - 1;
+      final cells = <DateTime?>[...List<DateTime?>.filled(lead, null), ...List.generate(count, (i) => first.add(Duration(days: i)))];
+      while (cells.length % 7 != 0) {
+        cells.add(null);
+      }
+      final rows = <Widget>[];
+      for (int r = 0; r < cells.length; r += 7) {
+        final week = cells.sublist(r, r + 7);
+        final ti = week.indexWhere((d) => d != null && dayKey(d) == dayKey(now));
+        rows.add(Padding(
+          padding: const EdgeInsets.only(bottom: 6),
+          child: ConnectedDots(
+            color: h.color,
+            radius: 11,
+            todayIndex: ti < 0 ? null : ti,
+            states: week.map<DotState?>((d) => d == null ? null : st(d)).toList(),
+            labels: week.map<String?>((d) => d == null ? null : '${d.day}').toList(),
+          ),
+        ));
+      }
+      return Column(children: rows);
     } else {
       final start = DateTime(now.year, 1, 1);
       final days = List.generate(DateTime(now.year, 12, 31).difference(start).inDays + 1, (i) => start.add(Duration(days: i)));
@@ -955,6 +1000,7 @@ class _HabitEditorState extends State<HabitEditor> {
   late List<ChecklistItem> _steps = widget.existing?.checklist.map((e) => ChecklistItem(id: e.id, title: e.title)).toList() ?? <ChecklistItem>[];
   late List<int> _reminders = List.of(widget.existing?.reminders ?? <int>[]);
   late String? _cover = widget.existing?.coverImagePath;
+  late double _coverBlur = widget.existing?.coverBlur ?? 0;
   final List<String> _createdCovers = [];
   bool _saved = false;
   String? _notifMsg;
@@ -1048,7 +1094,7 @@ class _HabitEditorState extends State<HabitEditor> {
     });
   }
 
- // ───────────── reminders ─────────────
+  // ───────────── reminders ─────────────
 
   Future<void> _addReminder() async {
     final init = _hasTime ? _plannedMinutes : 8 * 60;
@@ -1086,16 +1132,16 @@ class _HabitEditorState extends State<HabitEditor> {
   Future<void> _checkPermission() async {
     final ok = await NotificationService.requestPermission();
     if (!mounted) return;
-    setState(() => _notifMsg = ok ? null : 'Notifications are blocked for Daybook. Allow them in Android Settings to receive reminders.');
+    setState(() => _notifMsg = ok ? null : 'Notifications are blocked for Versind. Allow them in Android Settings to receive reminders.');
   }
 
   Future<void> _sendTest() async {
     final ok = await NotificationService.sendTest();
     if (!mounted) return;
-    setState(() => _notifMsg = ok ? 'Test sent — check your notification shade.' : 'Notifications are blocked for Daybook. Allow them in Android Settings.');
+    setState(() => _notifMsg = ok ? 'Test sent — check your notification shade.' : 'Notifications are blocked for Versind. Allow them in Android Settings.');
   }
 
-  // ───────────── cover image ─────────────
+// ───────────── cover image ─────────────
 
   Future<void> _pickCover() async {
     if (_pickingCover) return;
@@ -1155,6 +1201,7 @@ class _HabitEditorState extends State<HabitEditor> {
       ex.reminders = reminders;
       ex.focusEnabled = _focus;
       ex.coverImagePath = _cover;
+      ex.coverBlur = _cover == null ? 0 : _coverBlur;
       await widget.store.updateHabit(ex);
       if (oldCover != null && oldCover != _cover) _rm(oldCover);
     } else {
@@ -1178,6 +1225,7 @@ class _HabitEditorState extends State<HabitEditor> {
         reminders: reminders,
         focusEnabled: _focus,
         coverImagePath: _cover,
+        coverBlur: _cover == null ? 0 : _coverBlur,
       );
       await widget.store.addHabit(h);
     }
@@ -1188,7 +1236,7 @@ class _HabitEditorState extends State<HabitEditor> {
     if (mounted) Navigator.pop(context);
   }
 
-// ───────────── build ─────────────
+  // ───────────── build ─────────────
 
   @override
   Widget build(BuildContext context) {
@@ -1309,8 +1357,7 @@ class _HabitEditorState extends State<HabitEditor> {
             decoration: _fieldDeco('Why this habit matters, or a note to yourself'),
           ),
         ),
-
-        // ── ICON ──
+                // ── ICON ──
         _section(
           'ICON',
           SizedBox(
@@ -1385,7 +1432,7 @@ class _HabitEditorState extends State<HabitEditor> {
           ),
         ),
 
-// ── CATEGORY ──
+        // ── CATEGORY ──
         _section(
           'CATEGORY',
           Wrap(spacing: 8, children: categories.map((c) => _chip(c, c == _category, () => setState(() => _category = c), color: categoryColor(c))).toList()),
@@ -1493,14 +1540,14 @@ class _HabitEditorState extends State<HabitEditor> {
           )),
         ),
 
-     // ── REMINDERS ──
+        // ── REMINDERS ──
         _section(
           'REMINDERS',
           _card(Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               if (_reminders.isEmpty)
-                const Padding(padding: EdgeInsets.only(bottom: 8), child: Text('No reminders. Add a time and Daybook will nudge you.', style: TextStyle(fontSize: 12.5, color: C.mute))),
+                const Padding(padding: EdgeInsets.only(bottom: 8), child: Text('No reminders. Add a time and Versind will nudge you.', style: TextStyle(fontSize: 12.5, color: C.mute))),
               Wrap(
                 spacing: 8,
                 runSpacing: 8,
@@ -1564,7 +1611,7 @@ class _HabitEditorState extends State<HabitEditor> {
               : (_repeat == 'everyNDays' ? 'Fires on the days this habit is due.' : 'Fires every day.'),
         ),
 
-        // ── COVER IMAGE ──
+      // ── COVER IMAGE ──
         _section(
           'COVER IMAGE',
           _card(_coverBlock()),
@@ -1595,7 +1642,7 @@ class _HabitEditorState extends State<HabitEditor> {
               child: ClipRRect(
                 borderRadius: BorderRadius.circular(16),
                 child: has
-                    ? _coverImage(f!)
+                    ? _coverImage(f!, blur: _coverBlur)
                     : Container(
                         decoration: BoxDecoration(
                           color: Colors.white.withValues(alpha: 0.04),
@@ -1617,7 +1664,7 @@ class _HabitEditorState extends State<HabitEditor> {
             ),
           ),
         ),
-        if (has)
+        if (has) ...[
           Padding(
             padding: const EdgeInsets.only(top: 4),
             child: Row(
@@ -1628,8 +1675,25 @@ class _HabitEditorState extends State<HabitEditor> {
               ],
             ),
           ),
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.center,
+            children: [
+              const Text('Blur', style: TextStyle(fontSize: 13.5, color: C.text)),
+              Expanded(
+                child: Slider(
+                  value: _coverBlur.clamp(0.0, 16.0).toDouble(),
+                  min: 0,
+                  max: 16,
+                  activeColor: _color,
+                  inactiveColor: Colors.white.withValues(alpha: 0.15),
+                  onChanged: (v) => setState(() => _coverBlur = v),
+                ),
+              ),
+              SizedBox(width: 28, child: Text(_coverBlur.round().toString(), textAlign: TextAlign.right, style: const TextStyle(fontSize: 12, color: C.mute))),
+            ],
+          ),
+        ],
       ],
     );
   }
 }
- 
