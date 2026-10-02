@@ -120,7 +120,7 @@ class _ShellState extends State<Shell> {
     final store = widget.store;
     switch (_i) {
       case 0:
-        return HomePage(store: store);
+        return HomePage(store: store, onOpenHabits: () => setState(() => _i = 1));
       case 1:
         return HabitsPage(store: store);
       case 2:
