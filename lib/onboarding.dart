@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'core.dart';
 import 'data.dart';
+import 'versind_widgets.dart';
 
 class Onboarding extends StatefulWidget {
   const Onboarding({super.key, required this.store});
@@ -11,7 +12,7 @@ class Onboarding extends StatefulWidget {
   State<Onboarding> createState() => _OnboardingState();
 }
 
-class _OnboardingState extends State<Onboarding> {
+class _OnboardingState extends State<Onboarding> with SingleTickerProviderStateMixin {
   int _step = 0;
   int _hour = 6;
   int _accentIndex = 0;
@@ -19,12 +20,31 @@ class _OnboardingState extends State<Onboarding> {
   final _name = TextEditingController();
   final _picker = FixedExtentScrollController(initialItem: 6);
 
+  // The first moment of the app is dark and quiet; this veil lifts to let the aurora in.
+  late final AnimationController _veil = AnimationController(vsync: this, duration: const Duration(milliseconds: 2400));
+  bool _veilStarted = false;
+
   bool get _hasName => _name.text.trim().isNotEmpty;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (_veilStarted) return;
+    _veilStarted = true;
+    if (MediaQuery.of(context).disableAnimations) {
+      _veil.value = 1;
+    } else {
+      Future.delayed(const Duration(milliseconds: 900), () {
+        if (mounted) _veil.forward();
+      });
+    }
+  }
 
   @override
   void dispose() {
     _name.dispose();
     _picker.dispose();
+    _veil.dispose();
     super.dispose();
   }
 
@@ -36,11 +56,13 @@ class _OnboardingState extends State<Onboarding> {
   Widget _welcome() => Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Reveal(delayMs: 100, child: Kicker('WELCOME')),
+          const WelcomeBrand(),
+          const SizedBox(height: 34),
+          const Reveal(delayMs: 1900, child: Kicker('WELCOME')),
           const SizedBox(height: 14),
-          const Reveal(delayMs: 250, child: Text('Every day is', style: h1Light)),
+          const Reveal(delayMs: 2050, child: Text('Every day is', style: h1Light)),
           const Reveal(
-            delayMs: 400,
+            delayMs: 2200,
             child: Text.rich(
               TextSpan(children: [
                 TextSpan(text: 'a page ', style: h1Bold),
@@ -51,14 +73,14 @@ class _OnboardingState extends State<Onboarding> {
           ),
           const SizedBox(height: 24),
           const Reveal(
-            delayMs: 600,
+            delayMs: 2400,
             child: Text(
               'Habits, plans, chapters and focus, woven into one calm place. A few quick questions so it can feel like yours.',
               style: subStyle,
             ),
           ),
           const SizedBox(height: 40),
-          Reveal(delayMs: 800, child: PillButton(label: 'Begin', onTap: () => _go(1))),
+          Reveal(delayMs: 2600, child: PillButton(label: 'Begin', onTap: () => _go(1))),
         ],
       );
 
@@ -155,14 +177,20 @@ class _OnboardingState extends State<Onboarding> {
             child: Text('This colours your buttons and highlights everywhere. Change it anytime in Settings.', style: subStyle),
           ),
           const SizedBox(height: 20),
+          // Wrap (not Row): six 48px swatches + gaps are wider than a small phone, which clipped the last (Blue) one.
           Reveal(
             delayMs: 560,
-            child: Row(
+            child: Wrap(
+              spacing: 12,
+              runSpacing: 12,
               children: List.generate(Accent.presets.length, (i) {
                 final on = i == _accentIndex;
-                return Padding(
-                  padding: const EdgeInsets.only(right: 12),
+                return Semantics(
+                  button: true,
+                  selected: on,
+                  label: Accent.names[i],
                   child: GestureDetector(
+                    behavior: HitTestBehavior.opaque,
                     onTap: () {
                       HapticFeedback.selectionClick();
                       setState(() {
@@ -220,25 +248,43 @@ class _OnboardingState extends State<Onboarding> {
   @override
   Widget build(BuildContext context) {
     final pages = [_welcome(), _nameStep(), _hourStep(), _finalStep()];
-    return SafeArea(
-      child: Center(
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 24),
-          child: AnimatedSwitcher(
-            duration: const Duration(milliseconds: 600),
-            switchInCurve: Curves.easeOutCubic,
-            switchOutCurve: Curves.easeIn,
-            transitionBuilder: (child, anim) => FadeTransition(
-              opacity: anim,
-              child: SlideTransition(
-                position: Tween<Offset>(begin: const Offset(0.08, 0), end: Offset.zero).animate(anim),
-                child: child,
-              ),
+    return Stack(
+      fit: StackFit.expand,
+      children: [
+        // black veil sits BEHIND the content, above the app background: lifts once, never blocks touches
+        Positioned.fill(
+          child: IgnorePointer(
+            child: AnimatedBuilder(
+              animation: _veil,
+              builder: (_, __) {
+                final a = 1 - Curves.easeInOutCubic.transform(_veil.value);
+                return a <= 0.001 ? const SizedBox.shrink() : ColoredBox(color: Colors.black.withValues(alpha: a));
+              },
             ),
-            child: SizedBox(key: ValueKey(_step), width: double.infinity, child: pages[_step]),
           ),
         ),
-      ),
+        if (_step == 0) const Positioned.fill(child: AmbientMotes()),
+        SafeArea(
+          child: Center(
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 24),
+              child: AnimatedSwitcher(
+                duration: const Duration(milliseconds: 650),
+                switchInCurve: Curves.easeOutCubic,
+                switchOutCurve: Curves.easeIn,
+                transitionBuilder: (child, anim) => FadeTransition(
+                  opacity: anim,
+                  child: SlideTransition(
+                    position: Tween<Offset>(begin: const Offset(0.08, 0), end: Offset.zero).animate(anim),
+                    child: ScaleTransition(scale: Tween<double>(begin: 0.97, end: 1).animate(anim), child: child),
+                  ),
+                ),
+                child: SizedBox(key: ValueKey(_step), width: double.infinity, child: pages[_step]),
+              ),
+            ),
+          ),
+        ),
+      ],
     );
   }
 }
