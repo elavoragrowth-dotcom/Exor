@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'core.dart';
 import 'data.dart';
+import 'versind_widgets.dart';
 
 class PlannerPage extends StatefulWidget {
   const PlannerPage({super.key, required this.store});
@@ -68,7 +69,7 @@ class _PlannerPageState extends State<PlannerPage> {
               // FIX 3: single sliding highlight — never two pills lit at once.
               Reveal(
                 delayMs: 260,
-                child: SlidingDayStrip(
+                child: DatePanel(
                   days: week,
                   selectedIndex: selectedIndex < 0 ? 0 : selectedIndex,
                   onSelect: (i) => setState(() => _selected = week[i]),
