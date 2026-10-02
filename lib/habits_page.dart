@@ -36,7 +36,7 @@ File? coverFileOf(Habit h) {
   return f.existsSync() ? f : null;
 }
 
-Widget _coverImage(File f, {double? height, double blur = 0}) => SizedBox(
+Widget _coverImage(File f, {double? height, double blur = 0, bool strong = false}) => SizedBox(
       width: double.infinity,
       height: height,
       child: Stack(
@@ -55,7 +55,7 @@ Widget _coverImage(File f, {double? height, double blur = 0}) => SizedBox(
               gradient: LinearGradient(
                 begin: Alignment.topCenter,
                 end: Alignment.bottomCenter,
-                colors: [Colors.black.withValues(alpha: 0.12), Colors.black.withValues(alpha: 0.62)],
+                colors: [Colors.black.withValues(alpha: strong ? 0.42 : 0.12), Colors.black.withValues(alpha: strong ? 0.74 : 0.62)],
               ),
             ),
           ),
@@ -82,7 +82,6 @@ class _HabitsPageState extends State<HabitsPage> {
     final cats = ['All', ...{for (final h in store.habits) h.category}];
     var list = store.habits;
     if (_filter != 'All') list = list.where((h) => h.category == _filter).toList();
-    final consistency = store.overallConsistency();
 
     return Stack(
       children: [
@@ -124,23 +123,6 @@ class _HabitsPageState extends State<HabitsPage> {
                         _statMini('${store.habits.isEmpty ? 0 : store.habits.map(store.currentStreak).reduce(math.max)}', 'Best current', Icons.local_fire_department_rounded, C.orange),
                         _statMini('${store.habits.isEmpty ? 0 : store.habits.map(store.bestStreak).reduce(math.max)}', 'Best ever', Icons.emoji_events_rounded, C.lime),
                         _statMini(total == 0 ? '0%' : '${((done / total) * 100).round()}%', 'Today', Icons.track_changes_rounded, C.teal),
-                      ],
-                    ),
-                    const SizedBox(height: 18),
-                    Row(
-                      children: [
-                        const Kicker('CONSISTENCY · LAST 14 DAYS', color: C.teal),
-                        const Spacer(),
-                        Text('${(consistency * 100).round()}%', style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: C.teal)),
-                      ],
-                    ),
-                    const SizedBox(height: 6),
-                    WavyConsistency(values: store.overallMomentum(), color: C.teal),
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: const [
-                        Text('14 days ago', style: TextStyle(fontSize: 11, color: C.mute)),
-                        Text('Today', style: TextStyle(fontSize: 11, color: C.mute)),
                       ],
                     ),
                   ],
@@ -420,7 +402,7 @@ class _HabitCardState extends State<HabitCard> {
     final h = widget.habit;
     final now = DateTime.now();
     final streak = store.currentStreak(h);
-    final week = List.generate(7, (i) => now.subtract(Duration(days: now.weekday - 1 - i)));
+    final week = List.generate(7, (i) => DateTime(now.year, now.month, now.day - (now.weekday - 1) + i));
     final cover = coverFileOf(h);
 
     return GestureDetector(
@@ -433,80 +415,73 @@ class _HabitCardState extends State<HabitCard> {
         duration: const Duration(milliseconds: 140),
         curve: Curves.easeOut,
         child: Glass(
-        radius: 24,
-        padding: EdgeInsets.zero,
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            if (cover != null) _coverImage(cover, height: 92, blur: h.coverBlur),
-            Padding(
-              padding: const EdgeInsets.all(20),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    crossAxisAlignment: CrossAxisAlignment.center,
-                    children: [
-                      Container(
-                        width: 44,
-                        height: 44,
-                        decoration: BoxDecoration(color: h.color.withValues(alpha: 0.18), shape: BoxShape.circle),
-                        child: Icon(h.icon, color: h.color, size: 22),
-                      ),
-                      const SizedBox(width: 14),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(h.name, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 15.5, fontWeight: FontWeight.w600, color: C.text)),
-                            const SizedBox(height: 4),
-                            SingleChildScrollView(
-                              scrollDirection: Axis.horizontal,
-                              physics: const NeverScrollableScrollPhysics(),
-                              child: Row(crossAxisAlignment: CrossAxisAlignment.center, children: [
-                                const Icon(Icons.local_fire_department_rounded, size: 14, color: C.orange),
-                                const SizedBox(width: 3),
-                                Text('$streak', style: const TextStyle(fontSize: 12, color: C.mute)),
-                                const SizedBox(width: 8),
-                                Chip2(h.category, color: categoryColor(h.category)),
-                                if (h.type != 'normal') ...[
-                                  const SizedBox(width: 6),
-                                  Chip2(habitTypeLabel(h.type), color: C.violet),
-                                ],
-                              ]),
-                            ),
-                          ],
+          radius: 24,
+          padding: EdgeInsets.zero,
+          // the habit's own cover (if it has one) is this card's background, under a scrim so text stays readable
+          child: Stack(
+            children: [
+              if (cover != null) Positioned.fill(child: _coverImage(cover, blur: h.coverBlur, strong: true)),
+              Padding(
+                padding: const EdgeInsets.all(20),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      crossAxisAlignment: CrossAxisAlignment.center,
+                      children: [
+                        Container(
+                          width: 44,
+                          height: 44,
+                          decoration: BoxDecoration(color: h.color.withValues(alpha: 0.18), shape: BoxShape.circle),
+                          child: Icon(h.icon, color: h.color, size: 22),
                         ),
-                      ),
-                      const SizedBox(width: 8),
-                      _trailingControl(),
-                    ],
-                  ),
-                  const SizedBox(height: 14),
-                  Row(
-                    children: week
-                        .map((d) => Expanded(
-                          child: Center(child: Text(weekdayShort(d.weekday).substring(0, 1), style: TextStyle(fontSize: 11, color: dayKey(d) == dayKey(now) ? C.lime : C.mute))),
-                            ))
-                        .toList(),
-                  ),
-                  const SizedBox(height: 4),
-                  ConnectedDots(
-                    color: h.color,
-                    radius: 6,
-                    todayIndex: now.weekday - 1,
-                    states: week.map<DotState?>((d) => !store.isDue(h, d) ? DotState.off : (store.successOn(h, d) ? DotState.done : DotState.miss)).toList(),
-                  ),
-                ],
+                        const SizedBox(width: 14),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(h.name, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 15.5, fontWeight: FontWeight.w600, color: C.text)),
+                              const SizedBox(height: 4),
+                              SingleChildScrollView(
+                                scrollDirection: Axis.horizontal,
+                                physics: const NeverScrollableScrollPhysics(),
+                                child: Row(crossAxisAlignment: CrossAxisAlignment.center, children: [
+                                  const Icon(Icons.local_fire_department_rounded, size: 14, color: C.orange),
+                                  const SizedBox(width: 3),
+                                  Text('$streak', style: const TextStyle(fontSize: 12, color: C.mute)),
+                                  const SizedBox(width: 8),
+                                  Chip2(h.category, color: categoryColor(h.category)),
+                                  if (h.type != 'normal') ...[
+                                    const SizedBox(width: 6),
+                                    Chip2(habitTypeLabel(h.type), color: C.violet),
+                                  ],
+                                ]),
+                              ),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        _trailingControl(),
+                      ],
+                    ),
+                    const SizedBox(height: 14),
+                    WeekCapsules(
+                      color: h.color,
+                      days: week,
+                      todayIndex: now.weekday - 1,
+                      states: week.map<DotState?>((d) => !store.isDue(h, d) ? DotState.off : (store.successOn(h, d) ? DotState.done : DotState.miss)).toList(),
+                    ),
+                  ],
+                ),
               ),
-            ),
-          ],
-        ),
+            ],
+          ),
         ),
       ),
     );
   }
 }
+
 class HabitDetailPage extends StatefulWidget {
   const HabitDetailPage({super.key, required this.store, required this.habitId});
   final AppStore store;
@@ -519,7 +494,7 @@ class _HabitDetailPageState extends State<HabitDetailPage> {
   String _range = 'Week';
   Timer? _ticker;
   int _elapsed = 0;
-  bool _running = false;
+    bool _running = false;
   final GlobalKey _stepBurstKey = GlobalKey();
 
   Habit get h => widget.store.habits.firstWhere((e) => e.id == widget.habitId);
@@ -583,7 +558,6 @@ class _HabitDetailPageState extends State<HabitDetailPage> {
     final logsForHabit = store.logs.where((l) => l.habitId == h.id).toList();
     final lastDone = logsForHabit.where((l) => l.done).toList()..sort((a, b) => b.date.compareTo(a.date));
     final cover = coverFileOf(h);
-    final consistency = store.consistency(h);
 
     return Scaffold(
       backgroundColor: Colors.transparent,
@@ -784,32 +758,6 @@ class _HabitDetailPageState extends State<HabitDetailPage> {
                   ],
                 ),
                 const SizedBox(height: 20),
-                Glass(
-                  radius: 24,
-                  padding: const EdgeInsets.fromLTRB(18, 18, 18, 12),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Row(
-                        children: [
-                          const Kicker('CONSISTENCY · LAST 14 DAYS', color: C.teal),
-                          const Spacer(),
-                          Text('${(consistency * 100).round()}%', style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: C.teal)),
-                        ],
-                      ),
-                      const SizedBox(height: 6),
-                      WavyConsistency(values: store.momentum(h), color: h.color),
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: const [
-                          Text('14 days ago', style: TextStyle(fontSize: 11, color: C.mute)),
-                          Text('Today', style: TextStyle(fontSize: 11, color: C.mute)),
-                        ],
-                      ),
-                    ],
-                  ),
-                ),
-                const SizedBox(height: 20),
                 const SectionLabel('ACTIVITY'),
                 Row(
                   children: ['Week', 'Month', 'Year'].map((r) {
@@ -850,8 +798,8 @@ class _HabitDetailPageState extends State<HabitDetailPage> {
       ),
     );
   }
-      
-  String _repeatLabel(Habit h) {
+
+String _repeatLabel(Habit h) {
     switch (h.repeatType) {
       case 'weekdays':
         return h.weekdays.map(weekdayShort).join(' · ');
@@ -880,7 +828,7 @@ class _HabitDetailPageState extends State<HabitDetailPage> {
                 const SizedBox(height: 8),
                 FittedBox(
                   fit: BoxFit.scaleDown,
-                  child: Text('$value${suffix.isNotEmpty ? ' $suffix' : ''}', textAlign: TextAlign.center, maxLines: 1, style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w700, color: C.text)),
+                  child: CountUp(value: int.tryParse(value) ?? 0, suffix: suffix.isNotEmpty ? ' $suffix' : '', style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w700, color: C.text)),
                 ),
                 const SizedBox(height: 2),
                 Text(label, textAlign: TextAlign.center, style: const TextStyle(fontSize: 12, color: C.mute)),
@@ -893,45 +841,31 @@ class _HabitDetailPageState extends State<HabitDetailPage> {
   Widget _activityView(AppStore store, Habit h, DateTime now) {
     DotState st(DateTime d) => !store.isDue(h, d) ? DotState.off : (store.successOn(h, d) ? DotState.done : DotState.miss);
     if (_range == 'Week') {
-      final start = now.subtract(Duration(days: now.weekday - 1));
-      final days = List.generate(7, (i) => start.add(Duration(days: i)));
-      return Column(
-        children: [
-          Row(
-            children: days
-                .map((d) => Expanded(
-                      child: Center(child: Text(weekdayShort(d.weekday), style: TextStyle(fontSize: 11, color: dayKey(d) == dayKey(now) ? C.lime : C.mute))),
-                    ))
-                .toList(),
-          ),
-          const SizedBox(height: 8),
-          ConnectedDots(color: h.color, radius: 13, todayIndex: now.weekday - 1, states: days.map<DotState?>(st).toList()),
-          const SizedBox(height: 8),
-          Row(
-            children: days.map((d) => Expanded(child: Center(child: Text('${d.day}', style: const TextStyle(fontSize: 11, color: C.mute))))).toList(),
-          ),
-        ],
-      );
+      final days = List.generate(7, (i) => DateTime(now.year, now.month, now.day - (now.weekday - 1) + i));
+      return WeekCapsules(color: h.color, days: days, todayIndex: now.weekday - 1, states: days.map<DotState?>(st).toList());
     } else if (_range == 'Month') {
       final first = DateTime(now.year, now.month, 1);
       final count = DateTime(now.year, now.month + 1, 0).day;
       final lead = first.weekday - 1;
-      final cells = <DateTime?>[...List<DateTime?>.filled(lead, null), ...List.generate(count, (i) => first.add(Duration(days: i)))];
+      final cells = <DateTime?>[...List<DateTime?>.filled(lead, null), ...List.generate(count, (i) => DateTime(now.year, now.month, 1 + i))];
       while (cells.length % 7 != 0) {
         cells.add(null);
       }
-      final rows = <Widget>[];
+      final rows = <Widget>[
+        Row(children: kShortDays.map((d) => Expanded(child: Center(child: Text(d.substring(0, 1), style: const TextStyle(fontSize: 11, color: C.mute))))).toList()),
+        const SizedBox(height: 6),
+      ];
       for (int r = 0; r < cells.length; r += 7) {
         final week = cells.sublist(r, r + 7);
         final ti = week.indexWhere((d) => d != null && dayKey(d) == dayKey(now));
         rows.add(Padding(
           padding: const EdgeInsets.only(bottom: 6),
-          child: ConnectedDots(
+          child: WeekCapsules(
             color: h.color,
-            radius: 11,
+            days: week,
+            showWeekday: false,
             todayIndex: ti < 0 ? null : ti,
             states: week.map<DotState?>((d) => d == null ? null : st(d)).toList(),
-            labels: week.map<String?>((d) => d == null ? null : '${d.day}').toList(),
           ),
         ));
       }
@@ -1141,7 +1075,7 @@ class _HabitEditorState extends State<HabitEditor> {
     setState(() => _notifMsg = ok ? 'Test sent — check your notification shade.' : 'Notifications are blocked for Versind. Allow them in Android Settings.');
   }
 
-// ───────────── cover image ─────────────
+  // ───────────── cover image ─────────────
 
   Future<void> _pickCover() async {
     if (_pickingCover) return;
@@ -1279,7 +1213,7 @@ class _HabitEditorState extends State<HabitEditor> {
           ),
         ],
 
-        // ── FOCUS ──
+      // ── FOCUS ──
         _section(
           'FOCUS',
           _card(Row(
@@ -1357,7 +1291,8 @@ class _HabitEditorState extends State<HabitEditor> {
             decoration: _fieldDeco('Why this habit matters, or a note to yourself'),
           ),
         ),
-                // ── ICON ──
+
+        // ── ICON ──
         _section(
           'ICON',
           SizedBox(
@@ -1611,7 +1546,7 @@ class _HabitEditorState extends State<HabitEditor> {
               : (_repeat == 'everyNDays' ? 'Fires on the days this habit is due.' : 'Fires every day.'),
         ),
 
-      // ── COVER IMAGE ──
+        // ── COVER IMAGE ──
         _section(
           'COVER IMAGE',
           _card(_coverBlock()),
