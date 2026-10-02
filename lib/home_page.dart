@@ -5,6 +5,8 @@ import 'package:image_picker/image_picker.dart';
 import 'package:path_provider/path_provider.dart';
 import 'core.dart';
 import 'data.dart';
+import 'habits_page.dart';
+import 'versind_widgets.dart';
 
 class HomePage extends StatefulWidget {
   const HomePage({super.key, required this.store});
@@ -31,7 +33,14 @@ class _HomePageState extends State<HomePage> {
     final upcoming = blocksToday.where((b) => b.startMinutes > nowMinutes).toList()
       ..sort((a, b) => a.startMinutes.compareTo(b.startMinutes));
     final justDone = blocksToday.where((b) => b.startMinutes + b.durationMinutes <= nowMinutes).toList();
-    final dueHabits = store.habits.where((hb) => store.isDue(hb, now) && !store.successOn(hb, now)).toList();
+    // today's habits, unfinished first so the next thing to do is always on top
+    final dueToday = store.habits.where((hb) => store.isDue(hb, now)).toList()
+      ..sort((a, b) {
+        final da = store.successOn(a, now) ? 1 : 0;
+        final db = store.successOn(b, now) ? 1 : 0;
+        return da.compareTo(db);
+      });
+    final shown = dueToday.take(3).toList();
 
     final week = List.generate(7, (i) => now.subtract(Duration(days: now.weekday - 1 - i)));
     final todayIndex = now.weekday - 1;
@@ -60,7 +69,7 @@ class _HomePageState extends State<HomePage> {
           ),
         ),
         const SizedBox(height: 22),
-        Reveal(delayMs: 200, child: SlidingDayStrip(days: week, selectedIndex: todayIndex)),
+        Reveal(delayMs: 200, child: DatePanel(days: week, selectedIndex: todayIndex)),
         const SizedBox(height: 20),
         Reveal(
           delayMs: 320,
@@ -154,48 +163,32 @@ class _HomePageState extends State<HomePage> {
             ),
           ),
         ],
-        if (dueHabits.isNotEmpty) ...[
+        if (shown.isNotEmpty) ...[
           const SizedBox(height: 22),
           const Reveal(delayMs: 500, child: SectionLabel("TODAY'S HABITS")),
-          Reveal(
-            delayMs: 560,
-            child: SizedBox(
-              height: 92,
-              child: ListView.separated(
-                scrollDirection: Axis.horizontal,
-                itemCount: dueHabits.length,
-                separatorBuilder: (_, __) => const SizedBox(width: 12),
-                itemBuilder: (_, i) {
-                  final hb = dueHabits[i];
-                  return GestureDetector(
-                    onTap: () {
-                      if (hb.type == 'normal') {
-                        HapticFeedback.mediumImpact();
-                        store.toggleHabit(hb, now);
-                      }
-                    },
-                    child: Glass(
-                      radius: 22,
-                      padding: const EdgeInsets.all(12),
-                      child: SizedBox(
-                        width: 78,
-                        child: Column(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            Icon(hb.icon, color: hb.color, size: 26),
-                            const SizedBox(height: 8),
-                            Text(hb.name, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 11.5, color: C.text)),
-                          ],
-                        ),
-                      ),
-                    ),
-                  );
-                },
+          // the same tile the Habits tab uses — one component, one behaviour
+          ...List.generate(shown.length, (i) {
+            final hb = shown[i];
+            return Padding(
+              padding: const EdgeInsets.only(bottom: 14),
+              child: Reveal(
+                delayMs: 560 + i * 70,
+                child: HabitCard(
+                  key: ValueKey('home-${hb.id}'),
+                  store: store,
+                  habit: hb,
+                  onOpen: () => openHabit(context, store, hb.id),
+                ),
               ),
+            );
+          }),
+          if (dueToday.length > shown.length)
+            Padding(
+              padding: const EdgeInsets.only(left: 4, bottom: 4),
+              child: Text('+${dueToday.length - shown.length} more in Habits', style: const TextStyle(fontSize: 12.5, color: C.mute)),
             ),
-          ),
         ],
-        const SizedBox(height: 22),
+        const SizedBox(height: 8),
         Reveal(
           delayMs: 620,
           child: Glass(
@@ -214,7 +207,7 @@ class _HomePageState extends State<HomePage> {
   }
 }
 
-/// FIX 1: circular profile-picture slot, top-right of the greeting.
+/// Circular profile-picture slot, top-right of the greeting.
 /// Tap to pick from the gallery; the image is copied into the app's own
 /// storage so it survives cache clears. Falls back to initials, then a
 /// placeholder icon.
@@ -254,23 +247,27 @@ class _ProfileAvatarState extends State<ProfileAvatar> {
     final name = widget.store.settings.name.trim();
     final initials = name.isEmpty ? '' : name[0].toUpperCase();
 
-    return GestureDetector(
-      onTap: _pick,
-      child: Container(
-        width: 52,
-        height: 52,
-        alignment: Alignment.center,
-        decoration: BoxDecoration(
-          shape: BoxShape.circle,
-          color: Colors.white.withValues(alpha: 0.08),
-          border: Border.all(color: Colors.white.withValues(alpha: 0.24), width: 1.4),
-          image: hasImage ? DecorationImage(image: FileImage(File(path)), fit: BoxFit.cover) : null,
+    return Semantics(
+      button: true,
+      label: 'Profile picture',
+      child: GestureDetector(
+        onTap: _pick,
+        child: Container(
+          width: 52,
+          height: 52,
+          alignment: Alignment.center,
+          decoration: BoxDecoration(
+            shape: BoxShape.circle,
+            color: Colors.white.withValues(alpha: 0.08),
+            border: Border.all(color: Colors.white.withValues(alpha: 0.24), width: 1.4),
+            image: hasImage ? DecorationImage(image: FileImage(File(path)), fit: BoxFit.cover) : null,
+          ),
+          child: hasImage
+              ? null
+              : (initials.isEmpty
+                  ? const Icon(Icons.person_rounded, color: C.mute, size: 24)
+                  : Text(initials, style: const TextStyle(fontSize: 19, fontWeight: FontWeight.w700, color: C.text))),
         ),
-        child: hasImage
-            ? null
-            : (initials.isEmpty
-                ? const Icon(Icons.person_rounded, color: C.mute, size: 24)
-                : Text(initials, style: const TextStyle(fontSize: 19, fontWeight: FontWeight.w700, color: C.text))),
       ),
     );
   }
