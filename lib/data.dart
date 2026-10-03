@@ -284,6 +284,52 @@ class AppStore extends ChangeNotifier {
   static const _kLogs = 'logs_v1';
   static const _kBlocks = 'blocks_v1';
   static const _kNotifSeq = 'notif_seq_v1';
+  static const _kAch = 'achievements_v1';
+  static const _kAchSeen = 'achievements_seen_v1';
+  static const _kAchInit = 'achievements_init_v1';
+
+  /// Bumps on every change so derived data (Stats) can be cached per version.
+  int version = 0;
+  Map<String, String> achievements = {}; // id -> yyyy-MM-dd unlocked
+  Set<String> achievementsSeen = {};
+  bool achievementsInitialised = false;
+
+  @override
+  void notifyListeners() {
+    version++;
+    super.notifyListeners();
+  }
+
+  /// Marks newly earned ids as unlocked. First run: everything already earned is unlocked
+  /// silently (returns empty) so existing users are not flooded. Later: returns fresh ids.
+  List<String> unlockEarned(Iterable<String> earned) {
+    final today = dayKey(DateTime.now());
+    final fresh = <String>[];
+    for (final id in earned) {
+      if (!achievements.containsKey(id)) {
+        achievements[id] = today;
+        fresh.add(id);
+      }
+    }
+    if (!achievementsInitialised) {
+      achievementsInitialised = true;
+      achievementsSeen.addAll(fresh);
+      _saveAchievements();
+      return const [];
+    }
+    if (fresh.isNotEmpty) _saveAchievements();
+    return fresh;
+  }
+
+  void markAchievementSeen(String id) {
+    if (achievementsSeen.add(id)) _saveAchievements();
+  }
+
+  Future<void> _saveAchievements() async {
+    await _prefs.setString(_kAch, jsonEncode(achievements));
+    await _prefs.setString(_kAchSeen, jsonEncode(achievementsSeen.toList()));
+    await _prefs.setBool(_kAchInit, achievementsInitialised);
+  }
 
   void _syncStatics() {
     GlassConfig.blur = settings.glassBlur;
@@ -311,6 +357,11 @@ class AppStore extends ChangeNotifier {
     blocks = (jsonDecode(_prefs.getString(_kBlocks) ?? '[]') as List)
         .map((e) => PlannerBlock.fromJson(e as Map<String, dynamic>))
         .toList();
+    try {
+      achievements = (jsonDecode(_prefs.getString(_kAch) ?? '{}') as Map).map((k, v) => MapEntry('$k', '$v'));
+      achievementsSeen = ((jsonDecode(_prefs.getString(_kAchSeen) ?? '[]')) as List).map((e) => '$e').toSet();
+      achievementsInitialised = _prefs.getBool(_kAchInit) ?? false;
+    } catch (_) {}
     _syncStatics();
 
     // Habits saved before reminders existed get their notification id block now.
@@ -690,6 +741,8 @@ class AppStore extends ChangeNotifier {
         'habits': habits.map((e) => e.toJson()).toList(),
         'logs': logs.map((e) => e.toJson()).toList(),
         'blocks': blocks.map((e) => e.toJson()).toList(),
+        'achievements': achievements,
+        'achievementsSeen': achievementsSeen.toList(),
       });
 
   Future<bool> importJson(String raw) async {
@@ -708,6 +761,11 @@ class AppStore extends ChangeNotifier {
       for (final h in newHabits) {
         h.notifBase = _nextNotifBase();
       }
+      try {
+        achievements = ((j['achievements'] ?? {}) as Map).map((k, v) => MapEntry('$k', '$v'));
+        achievementsSeen = ((j['achievementsSeen'] ?? []) as List).map((e) => '$e').toSet();
+        achievementsInitialised = false; // re-baseline against imported data, silently
+      } catch (_) {}
       settings = newSettings;
       habits = newHabits;
       logs = newLogs;
@@ -716,6 +774,7 @@ class AppStore extends ChangeNotifier {
       await _saveHabits();
       await _saveLogs();
       await _saveBlocks();
+      await _saveAchievements();
       _syncStatics();
       notifyListeners();
       await syncAllReminders();
