@@ -10,6 +10,7 @@ import 'home_page.dart';
 import 'habits_page.dart';
 import 'planner_page.dart';
 import 'settings_page.dart';
+import 'stats_page.dart';
 import 'versind_widgets.dart';
 
 Future<void> main() async {
@@ -133,14 +134,7 @@ class _ShellState extends State<Shell> {
           line: 'Your eight CA Inter subjects and every chapter, with revisions, will live here.',
         );
       case 3:
-        return const SoonPage(
-          kicker: 'STATS',
-          light: "How you're",
-          bold: 'really doing.',
-          icon: Icons.insights_rounded,
-          phase: 3,
-          line: 'Focus time, consistency and progress will be drawn here, one calm chart at a time.',
-        );
+        return StatsPage(store: store, onOpenHabits: () => setState(() => _i = 1));
       case 4:
         return PlannerPage(store: store);
       default:
